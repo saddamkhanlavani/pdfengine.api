@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'pdfengine'
+    static_configs:
+      - targets: ['host.docker.internal:5276'] # Pointing to the host where the API runs during dev

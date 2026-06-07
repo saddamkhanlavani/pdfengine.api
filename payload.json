@@ -1,0 +1,15 @@
+{
+  "documentName": "stress-test",
+  "documentType": 0,
+  "htmlContent": "<html><body><h1>Stress Test</h1><p>Concurrent rendering.</p></body></html>",
+  "options": {
+    "pageSize": "A4",
+    "printBackground": true,
+    "margin": {
+      "top": "20px",
+      "bottom": "20px",
+      "left": "20px",
+      "right": "20px"
+    }
+  }
+}

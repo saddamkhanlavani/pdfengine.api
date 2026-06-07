@@ -1,0 +1,74 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: pdfengine-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  minio:
+    image: minio/minio
+    container_name: pdfengine-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+
+  # This initializes the MinIO bucket automatically
+  minio-init:
+    image: minio/mc
+    container_name: pdfengine-minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c " /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin; /usr/bin/mc mb myminio/pdf-storage --ignore-existing; /usr/bin/mc anonymous set public myminio/pdf-storage; exit 0; "
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: pdfengine-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: pdfuser
+      POSTGRES_PASSWORD: pdfpassword
+      POSTGRES_DB: pdfengine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # PHASE 10: Prometheus for Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: pdfengine-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+
+  # PHASE 10: Grafana for Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: pdfengine-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  minio_data:
+  postgres_data:
+  grafana_data:
