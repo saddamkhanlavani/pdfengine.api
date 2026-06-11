@@ -172,6 +172,48 @@ public class WebhooksController : ControllerBase
 
         return Ok(deliveries);
     }
+
+    [HttpPost("deliveries/{id}/replay")]
+    public async Task<IActionResult> ReplayDelivery(Guid id)
+    {
+        var tenant = HttpContext.Items["Client"] as Tenant;
+        if (tenant == null) return Unauthorized();
+
+        var delivery = await _dbContext.WebhookDeliveries
+            .Include(d => d.Endpoint)
+            .FirstOrDefaultAsync(d => d.Id == id && d.Endpoint.TenantId == tenant.Id && d.Endpoint.DeletedAt == null);
+
+        if (delivery == null) return NotFound();
+
+        var webhookService = HttpContext.RequestServices.GetRequiredService<IWebhookService>();
+        
+        await webhookService.DispatchAsync(tenant.Id, delivery.Event, System.Text.Json.JsonSerializer.Deserialize<object>(delivery.Payload)!);
+
+        return Ok(new { message = "Webhook delivery replayed successfully" });
+    }
+
+    [HttpPost("test/{id}")]
+    public async Task<IActionResult> TestEndpoint(Guid id)
+    {
+        var tenant = HttpContext.Items["Client"] as Tenant;
+        if (tenant == null) return Unauthorized();
+
+        var endpoint = await _dbContext.WebhookEndpoints
+            .FirstOrDefaultAsync(e => e.Id == id && e.TenantId == tenant.Id && e.DeletedAt == null);
+
+        if (endpoint == null) return NotFound();
+
+        var webhookService = HttpContext.RequestServices.GetRequiredService<IWebhookService>();
+
+        await webhookService.DispatchAsync(tenant.Id, "ping", new
+        {
+            message = "This is a test webhook request from PDFEngine.",
+            endpointId = endpoint.Id,
+            timestamp = DateTime.UtcNow
+        });
+
+        return Ok(new { message = "Test webhook dispatched successfully." });
+    }
 }
 
 public class CreateWebhookRequest

@@ -31,8 +31,8 @@ public class ApiKeyMiddleware
         var path = context.Request.Path;
         if (path.StartsWithSegments("/health") || 
             path.StartsWithSegments("/metrics") || 
-            path.StartsWithSegments("/api/webhooks") || 
-            path.StartsWithSegments("/api/v1/webhooks") || 
+            path.StartsWithSegments("/api/webhooks/stripe") || 
+            path.StartsWithSegments("/api/v1/webhooks/stripe") || 
             path.StartsWithSegments("/api/auth") || 
             path.StartsWithSegments("/api/v1/auth"))
         {

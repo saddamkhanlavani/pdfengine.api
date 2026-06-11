@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using PdfEngine.Infrastructure.Data;
 using PdfEngine.Domain.Entities;
 using OtpNet;
+using PdfEngine.Application.Interfaces;
+using PdfEngine.Application.Features.Pdf.Commands;
 
 namespace PdfEngine.API.Controllers;
 
@@ -15,28 +17,53 @@ namespace PdfEngine.API.Controllers;
 public class AccountController : ControllerBase
 {
     private readonly PdfEngineDbContext _context;
+    private readonly IPdfService _pdfService;
 
-    public AccountController(PdfEngineDbContext context)
+    public AccountController(PdfEngineDbContext context, IPdfService pdfService)
     {
         _context = context;
+        _pdfService = pdfService;
     }
 
     private async Task EnsureSeededUsageRecords(Guid tenantId)
     {
+        var oldSeeded = await _context.UsageRecords
+            .Where(u => u.TenantId == tenantId && u.RequestId.StartsWith("REQ_") && u.ClientIp == null)
+            .ToListAsync();
+
+        if (oldSeeded.Count > 0)
+        {
+            _context.UsageRecords.RemoveRange(oldSeeded);
+            await _context.SaveChangesAsync();
+        }
+
         var hasRecords = await _context.UsageRecords.AnyAsync(u => u.TenantId == tenantId);
         if (!hasRecords)
         {
             var records = new List<UsageRecord>();
             var random = new Random(tenantId.GetHashCode());
+            var browsers = new[]
+            {
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "PdfEngine NodeClient/1.4.2 (.NET 8.0)",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+            };
             
             for (int i = 30; i >= 0; i--)
             {
-                var date = DateTime.UtcNow.Date.AddDays(-i);
                 int dailyRequests = random.Next(15, 60);
                 for (int j = 0; j < dailyRequests; j++)
                 {
-                    var timestamp = date.AddHours(random.Next(0, 24)).AddMinutes(random.Next(0, 60));
+                    // Generate timestamps strictly in the past
+                    var timestamp = DateTime.UtcNow.AddDays(-i)
+                        .AddHours(-random.Next(0, 24))
+                        .AddMinutes(-random.Next(0, 60));
+                    
                     var isSuccess = random.Next(0, 100) < 98;
+                    var keyType = random.Next(0, 2) == 0 ? "pk_live_" : "pk_test_";
+                    var keyHint = Guid.NewGuid().ToString("N").Substring(0, 6);
                     
                     records.Add(new UsageRecord
                     {
@@ -49,7 +76,16 @@ public class AccountController : ControllerBase
                         PdfSizeBytes = isSuccess ? random.Next(15000, 250000) : 0,
                         DurationMs = random.Next(200, 1200),
                         StatusCode = isSuccess ? 200 : 504,
-                        Cost = isSuccess ? 0.002m : 0.000m
+                        Cost = isSuccess ? 0.002m : 0.000m,
+                        ClientIp = $"185.190.140.{random.Next(1, 255)}",
+                        UserAgent = browsers[random.Next(browsers.Length)],
+                        AuthMechanism = random.Next(0, 3) == 0 
+                            ? "JWT / Session" 
+                            : $"API Key ({keyType}{keyHint}...)",
+                        IsWatermarked = keyType == "pk_test_",
+                        SandboxEnvironment = keyType == "pk_live_" 
+                            ? "Isolation Sandbox v2.1 (Production)" 
+                            : "Dev Sandbox v1.4 (Development)"
                     });
                 }
             }
@@ -245,7 +281,13 @@ public class AccountController : ControllerBase
                 status = u.Success ? "SUCCESS" : "FAILED",
                 errorMessage = u.ErrorMessage,
                 latency = u.DurationMs + "ms",
-                timestamp = u.Timestamp.ToString("yyyy-MM-dd HH:mm")
+                timestamp = u.Timestamp.ToString("yyyy-MM-dd HH:mm"),
+                fileSize = u.Success ? $"{u.PdfSizeBytes / 1024} KB" : "0 KB",
+                clientIp = u.ClientIp,
+                authMechanism = u.AuthMechanism,
+                isWatermarked = u.IsWatermarked,
+                sandboxEnvironment = u.SandboxEnvironment,
+                userAgent = u.UserAgent
             })
             .ToListAsync();
 
@@ -261,11 +303,72 @@ public class AccountController : ControllerBase
         var filePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "pdfengine_storage", $"{jobId}.pdf");
         if (!System.IO.File.Exists(filePath))
         {
-            return NotFound(new { message = "PDF file has expired or is no longer available." });
+            var record = await _context.UsageRecords.FirstOrDefaultAsync(u => u.RequestId == jobId && u.TenantId == client.Id);
+            if (record == null)
+            {
+                return NotFound(new { message = "PDF file has expired or is no longer available." });
+            }
+
+            // Generate a placeholder PDF for seeded/expired records using the PDF engine!
+            try
+            {
+                var html = $@"
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <style>
+                            body {{ font-family: sans-serif; padding: 50px; background: #0f172a; color: #f1f5f9; }}
+                            .card {{ border: 1px solid #334155; border-radius: 12px; padding: 30px; background: #1e293b; }}
+                            h1 {{ color: #3b82f6; margin-top: 0; }}
+                            .meta {{ margin-bottom: 20px; font-size: 14px; color: #94a3b8; }}
+                            .meta p {{ margin: 6px 0; }}
+                        </style>
+                    </head>
+                    <body>
+                        <div class='card'>
+                            <h1>PDFEngine Document Archive</h1>
+                            <div class='meta'>
+                                <p><strong>Request ID:</strong> {record.RequestId}</p>
+                                <p><strong>Timestamp:</strong> {record.Timestamp:yyyy-MM-dd HH:mm:ss}</p>
+                                <p><strong>Status:</strong> {(record.Success ? "SUCCESS" : "FAILED")}</p>
+                                <p><strong>Latency:</strong> {record.DurationMs}ms</p>
+                            </div>
+                            <p>This is a placeholder PDF generated for demonstration and local testing of seeded/historical usage logs.</p>
+                        </div>
+                    </body>
+                    </html>";
+
+                var command = new GeneratePdfCommand
+                {
+                    Client = client,
+                    DocumentName = $"document_{jobId}",
+                    HtmlContent = html
+                };
+
+                var renderResult = await _pdfService.GenerateAsync(command);
+                if (renderResult.IsSuccess && renderResult.Value != null)
+                {
+                    var dir = System.IO.Path.GetDirectoryName(filePath);
+                    if (!string.IsNullOrEmpty(dir) && !System.IO.Directory.Exists(dir))
+                    {
+                        System.IO.Directory.CreateDirectory(dir);
+                    }
+                    await System.IO.File.WriteAllBytesAsync(filePath, renderResult.Value);
+                }
+                else
+                {
+                    return NotFound(new { message = "PDF file has expired and placeholder generation failed." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return NotFound(new { message = $"PDF file has expired and placeholder generation failed: {ex.Message}" });
+            }
         }
 
         var pdfBytes = await System.IO.File.ReadAllBytesAsync(filePath);
-        return File(pdfBytes, "application/pdf", $"document_{jobId.Substring(0, 8)}.pdf");
+        var displayId = jobId.Length >= 8 ? jobId.Substring(0, 8) : jobId;
+        return File(pdfBytes, "application/pdf", $"document_{displayId}.pdf");
     }
 
     [HttpGet("keys")]
