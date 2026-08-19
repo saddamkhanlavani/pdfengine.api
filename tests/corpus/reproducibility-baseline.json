@@ -1,0 +1,48 @@
+{
+  "fingerprints": {
+    "clock-and-random": {
+      "bytes": 14423,
+      "structural": "ac5a610284907b66e6b9a1ca3076b1529effb910213f131e1047313a062a38d7",
+      "visual": "fd110dbcfd090fc67ed965e101ebc28d954f99d6569fbe6807a17c696fed1253"
+    },
+    "grid-and-table": {
+      "bytes": 20614,
+      "structural": "1fd192726cb2120656a7a011c9efcd7d7c86d77cab825ac438f9ad2fa2446729",
+      "visual": "c4484790a805dcb1a916141c8425035065fe281291d27d8cc2b10cca7dce676c"
+    },
+    "svg-and-image": {
+      "bytes": 8210,
+      "structural": "b682979f464b347fa14d077802a20ed1cc80ef6ab1e0991c1de82cfd8da2a18b",
+      "visual": "5a7b741f3d946c3544c4dbf754b3322f4af374b6e16e34558796790c5f305e34"
+    },
+    "text-only": {
+      "bytes": 11841,
+      "structural": "d5ac7c5f2dc2e86bb5afb1a937ef9998c9116d70e20cd5ef603894bc6f8e7337",
+      "visual": "37506aaa82533bb26ffb23677b221642103a06cdf1b8b129acda116854c76ceb"
+    },
+    "webfont": {
+      "bytes": 16649,
+      "structural": "656e00598a674ccdf7117b46aef555baa30f397dde8527091abf8e91a1d57991",
+      "visual": "0282f93d452a98287fb9866e42552db7da060cfff31a10cf22873b0acd0d4482"
+    }
+  },
+  "image_environment": {
+    "browser_revisions": [
+      "chromium-1208",
+      "chromium_headless_shell-1208"
+    ],
+    "chromium": "Chromium 145.0.7632.0",
+    "font_count": 35,
+    "font_digest": "2db9107944f6c4a95bfac5880af1af5b3c685d77abb45e090e1c93dd57cc883d",
+    "font_resolution": {
+      "Arial": "Carlito-Regular.ttf",
+      "Courier New": "LiberationMono-Regular.ttf",
+      "Helvetica": "Carlito-Regular.ttf",
+      "Times New Roman": "Caladea-Regular.ttf",
+      "monospace": "LiberationMono-Regular.ttf",
+      "sans-serif": "Carlito-Regular.ttf",
+      "serif": "Caladea-Regular.ttf"
+    },
+    "qpdf": "qpdf version 11.3.0"
+  }
+}

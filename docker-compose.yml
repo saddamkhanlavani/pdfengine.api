@@ -1,4 +1,30 @@
 services:
+  # The engine itself. Built from the Dockerfile in this directory, which pins Chromium,
+  # the fonts and qpdf — the three things that decide what the output bytes are.
+  api:
+    build: .
+    image: pdfengine:local
+    container_name: pdfengine-api
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=pdfengine;Username=pdfuser;Password=pdfpassword"
+      Redis__ConnectionString: "redis:6379,abortConnect=false"
+      # Inside a container 127.0.0.1 is the container itself, so every default that
+      # points at localhost has to be restated against a service name.
+      AWS__ServiceURL: "http://minio:9000"
+      AWS__AccessKey: "minioadmin"
+      AWS__SecretKey: "minioadmin"
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: pdfengine-redis
