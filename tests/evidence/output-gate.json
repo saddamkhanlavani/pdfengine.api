@@ -134,5 +134,13 @@
   "T2-3e a document with no fields is not a form": {
     "verdict": "PASS",
     "detail": "is_form=False; widgets=0"
+  },
+  "T2-3f every field is VISIBLE, not just structurally present": {
+    "verdict": "PASS",
+    "detail": "every widget carries /AP"
+  },
+  "T2-3g a filled field survives a save by an independent reader": {
+    "verdict": "PASS",
+    "detail": "full_name read back as 'round trip'"
   }
 }

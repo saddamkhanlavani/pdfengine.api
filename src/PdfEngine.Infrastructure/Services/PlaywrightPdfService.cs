@@ -4436,6 +4436,12 @@ public class PlaywrightPdfService : IPdfService
         var placed = 0;
         var skipped = new List<string>();
 
+        // The base-14 faces the appearance streams below draw with. Neither needs
+        // embedding, which is also precisely why a form cannot be PDF/A — archival
+        // conformance requires every font embedded.
+        var helvetica = Base14(document, "/Helvetica", "/WinAnsiEncoding");
+        var dingbats = Base14(document, "/ZapfDingbats", null);
+
         foreach (var field in options.FormFields)
         {
             if (string.IsNullOrWhiteSpace(field.Name))
@@ -4489,6 +4495,13 @@ public class PlaywrightPdfService : IPdfService
                     var state = new PdfSharpCore.Pdf.PdfName(ticked ? "/Yes" : "/Off");
                     widget.Elements["/V"] = state;
                     widget.Elements["/AS"] = state;
+                    // A reader that honours NeedAppearances REGENERATES this appearance,
+                    // and needs to be told which font the tick is drawn in — otherwise it
+                    // resolves /ZaDb against /DR, does not find it, and warns.
+                    widget.Elements["/DA"] = new PdfSharpCore.Pdf.PdfString("/ZaDb 0 Tf 0 g");
+                    AddFieldDecoration(document, widget);
+                    widget.Elements["/AP"] = CheckBoxAppearance(
+                        document, dingbats, Math.Max(1, field.Width), Math.Max(1, field.Height));
                     break;
 
                 default:
@@ -4499,6 +4512,10 @@ public class PlaywrightPdfService : IPdfService
                     var size = Math.Clamp(field.FontSize <= 0 ? 10 : field.FontSize, 4, 72);
                     widget.Elements["/DA"] = new PdfSharpCore.Pdf.PdfString(
                         $"/Helv {size.ToString("0.##", CultureInfo.InvariantCulture)} Tf 0 g");
+                    AddFieldDecoration(document, widget);
+                    widget.Elements["/AP"] = TextAppearance(
+                        document, helvetica,
+                        Math.Max(1, field.Width), Math.Max(1, field.Height), size, field.Value);
                     break;
             }
 
@@ -4526,18 +4543,9 @@ public class PlaywrightPdfService : IPdfService
             return;
         }
 
-        // The base-14 Helvetica the /DA above refers to. It needs no embedding, which is
-        // also precisely why a form cannot be PDF/A — archival conformance requires every
-        // font embedded and appearances baked, and NeedAppearances asks for the opposite.
-        var helvetica = new PdfSharpCore.Pdf.PdfDictionary(document);
-        document.Internals.AddObject(helvetica);
-        helvetica.Elements["/Type"] = new PdfSharpCore.Pdf.PdfName("/Font");
-        helvetica.Elements["/Subtype"] = new PdfSharpCore.Pdf.PdfName("/Type1");
-        helvetica.Elements["/BaseFont"] = new PdfSharpCore.Pdf.PdfName("/Helvetica");
-        helvetica.Elements["/Encoding"] = new PdfSharpCore.Pdf.PdfName("/WinAnsiEncoding");
-
         var fontResources = new PdfSharpCore.Pdf.PdfDictionary(document);
         fontResources.Elements["/Helv"] = PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(helvetica);
+        fontResources.Elements["/ZaDb"] = PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(dingbats);
         var resources = new PdfSharpCore.Pdf.PdfDictionary(document);
         resources.Elements["/Font"] = fontResources;
 
@@ -4546,8 +4554,11 @@ public class PlaywrightPdfService : IPdfService
         acroForm.Elements["/Fields"] = fields;
         acroForm.Elements["/DR"] = resources;
         acroForm.Elements["/DA"] = new PdfSharpCore.Pdf.PdfString("/Helv 10 Tf 0 g");
-        // Asks the reader to draw the fields. Writing appearance streams by hand would look
-        // subtly wrong in every viewer that has its own idea of a form control.
+        // Every widget above also carries a real /AP, because NeedAppearances is a REQUEST
+        // and several viewers — macOS Preview among them — ignore it. A field with no
+        // appearance stream draws nothing at all there: the form is present in the object
+        // tree, invisible on the page, and the user reasonably concludes it does not work.
+        // NeedAppearances stays on so readers that DO honour it regenerate after filling.
         acroForm.Elements["/NeedAppearances"] = new PdfSharpCore.Pdf.PdfBoolean(true);
         document.Internals.Catalog.Elements["/AcroForm"] =
             PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(acroForm);
@@ -4559,6 +4570,130 @@ public class PlaywrightPdfService : IPdfService
         }
         logger?.LogInformation("Added {Count} interactive form field(s).", placed);
     }
+
+    private static PdfSharpCore.Pdf.PdfDictionary Base14(
+        PdfSharpCore.Pdf.PdfDocument document, string baseFont, string? encoding)
+    {
+        var font = new PdfSharpCore.Pdf.PdfDictionary(document);
+        document.Internals.AddObject(font);
+        font.Elements["/Type"] = new PdfSharpCore.Pdf.PdfName("/Font");
+        font.Elements["/Subtype"] = new PdfSharpCore.Pdf.PdfName("/Type1");
+        font.Elements["/BaseFont"] = new PdfSharpCore.Pdf.PdfName(baseFont);
+        if (encoding != null) font.Elements["/Encoding"] = new PdfSharpCore.Pdf.PdfName(encoding);
+        return font;
+    }
+
+    /// <summary>A visible border and background, so the field reads as a field.</summary>
+    private static void AddFieldDecoration(
+        PdfSharpCore.Pdf.PdfDocument document, PdfSharpCore.Pdf.PdfDictionary widget)
+    {
+        var mk = new PdfSharpCore.Pdf.PdfDictionary(document);
+        var border = new PdfSharpCore.Pdf.PdfArray(document);
+        foreach (var c in new[] { 0.45, 0.47, 0.55 }) border.Elements.Add(new PdfSharpCore.Pdf.PdfReal(c));
+        var background = new PdfSharpCore.Pdf.PdfArray(document);
+        foreach (var c in new[] { 0.97, 0.97, 0.99 }) background.Elements.Add(new PdfSharpCore.Pdf.PdfReal(c));
+        mk.Elements["/BC"] = border;
+        mk.Elements["/BG"] = background;
+        widget.Elements["/MK"] = mk;
+
+        var bs = new PdfSharpCore.Pdf.PdfDictionary(document);
+        bs.Elements["/W"] = new PdfSharpCore.Pdf.PdfInteger(1);
+        bs.Elements["/S"] = new PdfSharpCore.Pdf.PdfName("/S");
+        widget.Elements["/BS"] = bs;
+    }
+
+    private static PdfSharpCore.Pdf.PdfDictionary AppearanceStream(
+        PdfSharpCore.Pdf.PdfDocument document, PdfSharpCore.Pdf.PdfDictionary font,
+        string fontName, double width, double height, string content)
+    {
+        var form = new PdfSharpCore.Pdf.PdfDictionary(document);
+        document.Internals.AddObject(form);
+        form.Elements["/Type"] = new PdfSharpCore.Pdf.PdfName("/XObject");
+        form.Elements["/Subtype"] = new PdfSharpCore.Pdf.PdfName("/Form");
+        form.Elements["/FormType"] = new PdfSharpCore.Pdf.PdfInteger(1);
+        var bbox = new PdfSharpCore.Pdf.PdfArray(document);
+        foreach (var v in new[] { 0, 0, width, height })
+            bbox.Elements.Add(new PdfSharpCore.Pdf.PdfReal(Math.Round(v, 2)));
+        form.Elements["/BBox"] = bbox;
+
+        var fonts = new PdfSharpCore.Pdf.PdfDictionary(document);
+        fonts.Elements[fontName] = PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(font);
+        var resources = new PdfSharpCore.Pdf.PdfDictionary(document);
+        resources.Elements["/Font"] = fonts;
+        form.Elements["/Resources"] = resources;
+
+        form.CreateStream(Encoding.ASCII.GetBytes(content));
+        return form;
+    }
+
+    private static PdfSharpCore.Pdf.PdfDictionary TextAppearance(
+        PdfSharpCore.Pdf.PdfDocument document, PdfSharpCore.Pdf.PdfDictionary helvetica,
+        double width, double height, double size, string? value)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var w = width.ToString("0.##", inv);
+        var h = height.ToString("0.##", inv);
+        var body = new StringBuilder();
+        body.Append("0.97 0.97 0.99 rg 0 0 ").Append(w).Append(' ').Append(h).Append(" re f\n");
+        body.Append("0.45 0.47 0.55 RG 0.5 w 0.5 0.5 ")
+            .Append((width - 1).ToString("0.##", inv)).Append(' ')
+            .Append((height - 1).ToString("0.##", inv)).Append(" re S\n");
+        // /Tx BMC ... EMC is what marks the variable-text region a reader replaces when
+        // the value changes. Without it a filled value can end up drawn twice.
+        body.Append("/Tx BMC\nq\nBT\n");
+        if (!string.IsNullOrEmpty(value))
+        {
+            var baseline = Math.Max(2, (height - size) / 2 + size * 0.18);
+            body.Append("/Helv ").Append(size.ToString("0.##", inv)).Append(" Tf 0 g\n")
+                .Append("2 ").Append(baseline.ToString("0.##", inv)).Append(" Td (")
+                .Append(EscapePdfLiteral(value)).Append(") Tj\n");
+        }
+        body.Append("ET\nQ\nEMC\n");
+
+        var ap = new PdfSharpCore.Pdf.PdfDictionary(document);
+        ap.Elements["/N"] = PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(
+            AppearanceStream(document, helvetica, "/Helv", width, height, body.ToString()));
+        return ap;
+    }
+
+    private static PdfSharpCore.Pdf.PdfDictionary CheckBoxAppearance(
+        PdfSharpCore.Pdf.PdfDocument document, PdfSharpCore.Pdf.PdfDictionary dingbats,
+        double width, double height)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var w = width.ToString("0.##", inv);
+        var h = height.ToString("0.##", inv);
+        var box = "0.97 0.97 0.99 rg 0 0 " + w + " " + h + " re f\n" +
+                  "0.45 0.47 0.55 RG 0.6 w 0.3 0.3 " +
+                  (width - 0.6).ToString("0.##", inv) + " " +
+                  (height - 0.6).ToString("0.##", inv) + " re S\n";
+        // ZapfDingbats 'a20' (char 4) is the check mark every reader draws for a tick.
+        var size = Math.Min(width, height) * 0.78;
+        var tick = box + "q\nBT\n/ZaDb " + size.ToString("0.##", inv) + " Tf 0 g\n" +
+                   (width * 0.18).ToString("0.##", inv) + " " +
+                   (height * 0.22).ToString("0.##", inv) + " Td (4) Tj\nET\nQ\n";
+
+        var ap = new PdfSharpCore.Pdf.PdfDictionary(document);
+        // BOTH states are required: a checkbox with only /Yes cannot be un-ticked, and a
+        // reader that resolves /AS to a missing state draws nothing at all.
+        ap.Elements["/N"] = BuildStates(document, dingbats, width, height, tick, box);
+        return ap;
+    }
+
+    private static PdfSharpCore.Pdf.PdfDictionary BuildStates(
+        PdfSharpCore.Pdf.PdfDocument document, PdfSharpCore.Pdf.PdfDictionary dingbats,
+        double width, double height, string onContent, string offContent)
+    {
+        var states = new PdfSharpCore.Pdf.PdfDictionary(document);
+        states.Elements["/Yes"] = PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(
+            AppearanceStream(document, dingbats, "/ZaDb", width, height, onContent));
+        states.Elements["/Off"] = PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(
+            AppearanceStream(document, dingbats, "/ZaDb", width, height, offContent));
+        return states;
+    }
+
+    private static string EscapePdfLiteral(string value) =>
+        value.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
 
     // --- T2-1: attachments / embedded files --------------------------------------
 

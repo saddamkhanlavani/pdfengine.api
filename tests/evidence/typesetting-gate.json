@@ -153,7 +153,7 @@
   },
   "T1-5h footnote emphasis is drawn in a REAL bold and italic face": {
     "verdict": "PASS",
-    "detail": "bold faces=['Carlito,Bold', 'Helvetica-Bold']; italic faces=['Carlito,Italic']; text intact=True"
+    "detail": "bold faces=['Helvetica-Bold', 'Carlito,Bold']; italic faces=['Carlito,Italic']; text intact=True"
   },
   "T1-8f a floated table keeps a selectable text layer over its image": {
     "verdict": "PASS",

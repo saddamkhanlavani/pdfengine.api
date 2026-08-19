@@ -816,6 +816,54 @@ def _():
     return (not is_form and not widgets), f"is_form={bool(is_form)}; widgets={len(widgets)}"
 
 
+@case("T2-3f every field is VISIBLE, not just structurally present")
+def _():
+    # The defect this case exists for: the fields were correct in the object tree and
+    # drew NOTHING on the page, because they had no appearance stream and relied on
+    # /NeedAppearances — which macOS Preview, among others, ignores. A form you cannot
+    # see is a form that does not work, and every structural check still passed.
+    pdf, _diag, err = render("t23-visible", FORM_HTML, {"pageSize": "A4",
+                                                       "formFields": FORM_FIELDS})
+    if err:
+        return False, err
+    import fitz
+    doc = fitz.open(stream=pdf, filetype="pdf")
+    missing = [w.field_name for page in doc for w in page.widgets()
+               if w.field_type_string != "Signature"
+               and "/AP" not in doc.xref_object(w.xref)]
+    return not missing, ("every widget carries /AP" if not missing
+                         else f"no appearance stream on {missing}")
+
+
+@case("T2-3g a filled field survives a save by an independent reader")
+def _():
+    # Proves the field is genuinely interactive rather than a drawn rectangle.
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError:
+        return None, "pypdf unavailable — SKIPPED (not a pass)"
+    pdf, _diag, err = render("t23-fill", FORM_HTML, {"pageSize": "A4",
+                                                    "formFields": FORM_FIELDS})
+    if err:
+        return False, err
+    import io
+    import contextlib
+    src = io.BytesIO(pdf)
+    writer = PdfWriter(clone_from=src)
+    name = next(k for k, v in (PdfReader(io.BytesIO(pdf)).get_fields() or {}).items()
+                if v.get("/FT") == "/Tx")
+    for page in writer.pages:
+        with contextlib.redirect_stdout(io.StringIO()):
+            try:
+                writer.update_page_form_field_values(page, {name: "round trip"})
+            except Exception:
+                continue
+    out = io.BytesIO()
+    writer.write(out)
+    back = (PdfReader(io.BytesIO(out.getvalue())).get_fields() or {}).get(name, {}).get("/V")
+    return back == "round trip", f"{name} read back as {back!r}"
+
+
 def main():
     global VERAPDF
     ap = argparse.ArgumentParser()

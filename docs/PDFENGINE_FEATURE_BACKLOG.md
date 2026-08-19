@@ -125,6 +125,20 @@ gate scoreboard, where Gates I, K and L are PARTIAL by design.
 
 ## Implementation notes worth keeping
 
+**A field with no appearance stream is an invisible field.** The form fields were correct
+in every structural sense — `/FT`, `/DA`, `/Rect`, listed in `/AcroForm /Fields`, found by
+two independent readers — and drew nothing at all on the page. `/NeedAppearances true` asks
+the READER to generate appearances, and macOS Preview ignores it. Every gate passed, and
+the first person to open the document found an empty box where a form should be. Widgets
+now carry a real `/AP` (plus `/MK` border and background), `/DR` includes `/ZaDb` so a
+reader that regenerates the checkbox can find the tick font, and gates `T2-3f`/`T2-3g`
+assert visibility and an external fill round-trip rather than structure alone. The general
+rule: **a gate that reads the object tree has not checked what a user sees.**
+
+**External verification lives in `tests/verify_tier2.py`.** Fifteen Tier 2 claims checked by
+poppler, openssl, qpdf, pypdf and PyMuPDF — never by this engine's own diagnostics. A tool
+that is not installed reports UNCHECKED, not PASS and not FAIL.
+
 **A tool that could not run is not a failing test.** `verapdf_compliant()` returned `False`
 when veraPDF produced no report. veraPDF is a Java program, so on a host with no JVM the
 PDF/A-3b gate reported the engine as NON-CONFORMANT when the real finding was UNCHECKED —

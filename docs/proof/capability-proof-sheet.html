@@ -414,12 +414,18 @@
     <code>/AcroForm</code>, and both are ordinary dictionaries this engine already writes by
     hand for attachments. What was missing was a convenience API, not the capability.</div>
   <div class="look"><b>See it here</b>
-    The three fields below are real and fillable. Click one and type into it.</div>
+    The three fields below are real and fillable &mdash; click one and type into it. They
+    are drawn by an appearance stream carried in the file, not by a request that the reader
+    draw them, because several viewers ignore that request and show an invisible form.</div>
   <table style="margin-top:10px">
     <tr><td style="width:34%">Full name</td><td>&nbsp;</td></tr>
     <tr><td>Email</td><td>&nbsp;</td></tr>
     <tr><td>I agree to the terms</td><td>&nbsp;</td></tr>
   </table>
+  <p style="margin-top:12px"><b>How to check this without trusting the page.</b> Run
+  <code>python3 tests/verify_tier2.py</code>. It fills a field with an unrelated library,
+  saves, reopens and reads the value back &mdash; along with fourteen other Tier 2 claims,
+  each checked by poppler, openssl, qpdf or pypdf rather than by this engine.</p>
   <p style="margin-top:12px"><b>The lesson, recorded so it is not repeated:</b> &ldquo;the
   library has no API for it&rdquo; is not the same as &ldquo;the format cannot do it&rdquo;,
   and only the second is a blocker.</p>
