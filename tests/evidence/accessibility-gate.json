@@ -1,0 +1,89 @@
+{
+  "tool": "veraPDF ua1",
+  "results": [
+    {
+      "case": "tagged alone",
+      "checked": true,
+      "compliant": true,
+      "passed": 1492,
+      "failed": 0,
+      "expected": true,
+      "engine_warned": false,
+      "clauses": []
+    },
+    {
+      "case": "tagged + running header (@page margin box)",
+      "checked": true,
+      "compliant": true,
+      "passed": 1560,
+      "failed": 0,
+      "expected": true,
+      "engine_warned": false,
+      "clauses": []
+    },
+    {
+      "case": "tagged + text watermark",
+      "checked": true,
+      "compliant": true,
+      "passed": 1530,
+      "failed": 0,
+      "expected": true,
+      "engine_warned": false,
+      "clauses": []
+    },
+    {
+      "case": "tagged + running header + watermark",
+      "checked": true,
+      "compliant": true,
+      "passed": 1598,
+      "failed": 0,
+      "expected": true,
+      "engine_warned": false,
+      "clauses": []
+    },
+    {
+      "case": "tagged + PDF/A-2b",
+      "checked": true,
+      "compliant": true,
+      "passed": 1492,
+      "failed": 0,
+      "expected": true,
+      "engine_warned": false,
+      "clauses": []
+    },
+    {
+      "case": "tagged + PDF/A-2b + running header",
+      "checked": true,
+      "compliant": true,
+      "passed": 1560,
+      "failed": 0,
+      "expected": true,
+      "engine_warned": false,
+      "clauses": []
+    },
+    {
+      "case": "tagged + footnote (KNOWN: real content, not yet in the structure tree)",
+      "checked": true,
+      "compliant": false,
+      "passed": 1626,
+      "failed": 7,
+      "expected": false,
+      "engine_warned": true,
+      "clauses": [
+        "7.1/3"
+      ]
+    },
+    {
+      "case": "tagged + Chromium headerTemplate (KNOWN: upstream, untagged)",
+      "checked": true,
+      "compliant": false,
+      "passed": 1571,
+      "failed": 3,
+      "expected": false,
+      "engine_warned": true,
+      "clauses": [
+        "7.1/3"
+      ]
+    }
+  ]
+}

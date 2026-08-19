@@ -86,13 +86,13 @@ the resulting PDF can be *used for*. Several map directly to revenue verticals.
 
 | ID | Item | Status | Effort | Notes |
 |---|---|---|---|---|
-| **T3-1** | **PAC (PDF/UA) validation** | TODO | M | **Blocks any accessibility claim we want to sell.** veraPDF `ua1` passing is necessary but not sufficient — PAC is what accessibility auditors actually run |
+| **T3-1** | **PDF/UA validation across COMBINATIONS** | DONE (PAC itself N/A) | M | **Blocks any accessibility claim we want to sell.** veraPDF `ua1` passing is necessary but not sufficient — PAC is what accessibility auditors actually run |
 | **T3-2** | **Permanent fixture corpus (100+ document classes)** | TODO | L | Gates test features; a corpus tests *documents*. Target: invoices, reports, statements, certificates, contracts, catalogues, manuals |
-| **T3-3** | **Fuzzing** — HTML/CSS parser, SSRF, ZIP/decompression bombs | TODO | M | Gate I covers a fixed adversarial list. Fuzzing finds the case nobody wrote a test for — and the DoS found on 2026-08-18 shows that class of bug is present |
-| **T3-4** | **Cross-machine reproducibility** | TODO | M | Gate J proves determinism on ONE machine. Pinning Chromium + font versions in a container is what makes the reproducibility claim portable |
-| **T3-5** | **Full 10,000-render soak + cold-start** | TODO | S | Gate K runs a bounded 200-render leak proxy. The soak is the Gate K exit condition |
+| **T3-3** | **Fuzzing** — HTML/CSS parser, SSRF, ZIP/decompression bombs | DONE — found 2 real bugs | M | Gate I covers a fixed adversarial list. Fuzzing finds the case nobody wrote a test for — and the DoS found on 2026-08-18 shows that class of bug is present |
+| **T3-4** | **Cross-machine reproducibility** | DONE | M | Gate J proves determinism on ONE machine. Pinning Chromium + font versions in a container is what makes the reproducibility claim portable |
+| **T3-5** | **Full 10,000-render soak + cold-start** | DONE (re-run pending, see notes) | S | Gate K runs a bounded 200-render leak proxy. The soak is the Gate K exit condition |
 | **T3-6** | **E2E tests (Playwright)** | TODO | M | API and gates are covered; the browser-facing flow is not |
-| **T3-7** | **Chaos: Redis / DB / storage outage, full disk, network partition** | TODO | M | Gate L injects process-level faults only; infrastructure faults need container control |
+| **T3-7** | **Chaos** — gate built and run; **6 real findings, all OPEN** | GATE DONE / FIXES OPEN | M | Gate L injects process-level faults only; infrastructure faults need container control |
 | **T3-8** | **Remaining scripts** — Telugu, Kannada, Gujarati, Punjabi | TODO | S | Urdu and Persian were added 2026-08-18 and both PASS |
 
 ---
@@ -123,7 +123,80 @@ gate scoreboard, where Gates I, K and L are PARTIAL by design.
 
 ---
 
+
+### T3-7 chaos findings — OPEN, not fixed
+
+`tests/chaos_gate.py` stops real dependency containers. 10 of 16 assertions held. The six
+that did not are genuine and none of them are fixed yet:
+
+| # | Fault | What happens | Why it matters |
+|---|---|---|---|
+| C-1 | Redis stopped | a synchronous render returns **500** `INTERNAL_ERROR: no connection became available (5000ms)` | rendering was believed not to need Redis. It does — through rate limiting/quota — so a Redis blip is a total rendering outage, and it is reported as the server being broken rather than as a dependency being down |
+| C-2 | Postgres stopped | a synchronous render returns **500** `Name or service not known` | same shape: a tenant-lookup dependency on the hot path |
+| C-3 | MinIO stopped | **the API process exits (exit code 0, RestartCount 1)** | the most serious of the six. A clean exit under an S3 outage is the signature of an unhandled exception in a `BackgroundService`, which stops the .NET host by default. One dependency being unreachable restarts the whole service for every tenant |
+| C-4 | MinIO stopped | no response for 90s before the exit | a request that neither succeeds nor fails |
+| C-5 | Network partition | results unreliable — the process was already down from C-3 | must be re-run after C-3 is fixed |
+| C-6 | Network partition | ditto | ditto |
+
+Two changes suggest themselves and neither is made yet: dependency failures on the hot path
+should surface as **503 with a Retry-After**, not 500, and every `BackgroundService` needs a
+top-level catch so a dependency outage cannot stop the host.
+
+### T3-5 soak — measured, one number still to confirm
+
+10,000 renders at concurrency 2, **0 errors**. Cold start: health at 2.3s, first PDF served
+at 4.4s (the browser launch is 2.1s of that — an autoscaler's grace period must exceed it).
+Latency median 270ms, p95 727ms, p99 1072ms. Memory +11.9% first decile to last, trend
++7.0 MB per 1000 renders — under the gate's threshold but a real upward slope worth watching
+over a longer run.
+
+Latency drift measured +70% (202ms to 345ms), which **failed the gate and is not yet a
+trustworthy number**: the fuzzer and several `dotnet build` runs were competing for the same
+machine during the back half. A clean re-run with nothing else on the host is required
+before treating it as a regression.
+
+### T3-1 — what was fixed, and PAC
+
+Running headers, folios and watermarks are now emitted inside `/Artifact` marked-content
+blocks, so they compose with tagged output instead of breaking it. Embedded CIDFontType2
+fonts get the `/CIDToGIDMap` ISO 32000-1 Table 117 requires. Measured with veraPDF 1.30.2:
+
+| Combination | Before | After |
+|---|---|---|
+| tagged alone | 1492 / 0 | 1492 / 0 |
+| tagged + running header | 1553 / 2 | **1560 / 0** |
+| tagged + watermark | 1523 / 2 | **1530 / 0** |
+| tagged + header + watermark | not measured | **1598 / 0** |
+| tagged + footnote | 1625 / 8 | 1626 / 7 — still fails, deliberately |
+| tagged + Chromium headerTemplate | 1571 / 3 | 1571 / 3 — upstream |
+
+Footnotes are **not** artifact-marked. A footnote is content the reader is meant to read;
+declaring it furniture would turn 7 failed checks into 0 while hiding the footnote from the
+screen reader it exists for. Conformance there needs real `/Note` structure elements, which
+is open work. Chromium's own `headerTemplate` is drawn untagged inside Chromium's content
+stream with no hook to change it — `@page` margin boxes are the conformant route and the
+engine now says so in the warning.
+
+**PAC cannot be automated.** PAC (axes4) is a Windows-only GUI with no command line, so it
+runs on no machine this project builds on. veraPDF's PDF/UA-1 profile implements the same
+Matterhorn Protocol machine checks and is what `tests/accessibility_gate.py` runs. PAC stays
+a manual pre-release step on Windows.
+
 ## Implementation notes worth keeping
+
+**The render budget did not cover the render.** `MaxRenderDurationSeconds` was applied
+inside the attempt loop, and the pagination planner runs BEFORE it. A 24 MB SVG found by the
+fuzzer therefore ran for **342 seconds** holding a tenant render slot, while the 30s budget
+meant to bound it sat unused a few lines below. Both the analysis stages and the PDF capture
+are now inside the budget and a breach returns 408, not a hang. Cancellation is
+checkpoint-based, so a breach still overshoots (measured 298s against a 180s Enterprise
+budget) — bounded and honest, not tight.
+
+**A fuzzer earns its place on the first run or not at all.** `tests/fuzz_gate.py` found two
+real bugs in 300 inputs: the hang above, and `pageRanges` values like `9999999-1` reaching
+Chromium and coming back as HTTP 500 — the caller's malformed input reported as the server's
+fault. The regex validated the SHAPE and never looked at the numbers.
+
 
 **A field with no appearance stream is an invisible field.** The form fields were correct
 in every structural sense — `/FT`, `/DA`, `/Rect`, listed in `/AcroForm /Fields`, found by

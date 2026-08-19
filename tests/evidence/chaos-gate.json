@@ -1,0 +1,98 @@
+[
+  {
+    "scenario": "redis",
+    "claim": "the API process survives the outage",
+    "ok": true,
+    "detail": "process is GONE \u2014 restart loop"
+  },
+  {
+    "scenario": "redis",
+    "claim": "a synchronous render still succeeds",
+    "ok": false,
+    "detail": "HTTP 500 in 6.0s, 908 bytes \u2014 {\"code\":\"INTERNAL_ERROR\",\"message\":\"The message timed out in the backlog attempting to send because no connection became available (5000ms) - Last Connection Ex"
+  },
+  {
+    "scenario": "redis",
+    "claim": "a dependent endpoint answers rather than hangs",
+    "ok": true,
+    "detail": "HTTP 500 in 6.0s"
+  },
+  {
+    "scenario": "redis",
+    "claim": "the engine recovers with no intervention",
+    "ok": true,
+    "detail": "renders again after the dependency returned"
+  },
+  {
+    "scenario": "postgres",
+    "claim": "the API process survives the outage",
+    "ok": true,
+    "detail": "process is still answering"
+  },
+  {
+    "scenario": "postgres",
+    "claim": "a synchronous render still succeeds",
+    "ok": false,
+    "detail": "HTTP 500 in 0.0s, 98 bytes \u2014 {\"code\":\"INTERNAL_ERROR\",\"message\":\"Name or service not known\",\"traceId\":\"0HNNU5VML7GGD:00000001\"}"
+  },
+  {
+    "scenario": "postgres",
+    "claim": "a dependent endpoint answers rather than hangs",
+    "ok": true,
+    "detail": "HTTP 500 in 0.0s"
+  },
+  {
+    "scenario": "postgres",
+    "claim": "the engine recovers with no intervention",
+    "ok": true,
+    "detail": "renders again after the dependency returned"
+  },
+  {
+    "scenario": "storage-denied",
+    "claim": "rendering does not depend on object storage",
+    "ok": false,
+    "detail": "HTTP None in 90.0s, 9 bytes"
+  },
+  {
+    "scenario": "storage-denied",
+    "claim": "the process survives",
+    "ok": false,
+    "detail": "GONE"
+  },
+  {
+    "scenario": "network-partition",
+    "claim": "the API keeps serving on loopback while partitioned",
+    "ok": false,
+    "detail": "in-container health: 000curl: (28) Operation timed out after 20002 milliseconds with 0 bytes received"
+  },
+  {
+    "scenario": "network-partition",
+    "claim": "an unreachable sub-resource does not hang the render",
+    "ok": false,
+    "detail": "HTTP 000curl: (7) Failed to connect to localhost port 8080 after 0 ms: Couldn't connect to server in 0.1s (a hang would sit at the 120s ceiling)"
+  },
+  {
+    "scenario": "network-partition",
+    "claim": "the engine is reachable and rendering again",
+    "ok": true,
+    "detail": "recovered"
+  },
+  {
+    "scenario": "unwritable-tmp",
+    "claim": "the engine answers rather than hanging",
+    "ok": true,
+    "detail": "HTTP 200 in 0.2s"
+  },
+  {
+    "scenario": "unwritable-tmp",
+    "claim": "the process survives an unwritable working directory",
+    "ok": true,
+    "detail": "still answering"
+  },
+  {
+    "scenario": "unwritable-tmp",
+    "claim": "the engine recovers once the directory is writable",
+    "ok": true,
+    "detail": "renders again"
+  }
+]

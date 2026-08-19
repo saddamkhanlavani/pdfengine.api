@@ -1,0 +1,6 @@
+{
+  "family": "options",
+  "why": "server-error",
+  "detail": "HTTP 500 in 1.4s: {\"code\":\"PDF_GENERATION_FAILED\",\"message\":\"Protocol error (Page.printToPDF): Page range is invalid (start > end)\",\"traceId\":\"0HNNU5EQUANHH:00000001\"}",
+  "input": "{\"documentName\": \"f\", \"documentType\": 4, \"html\": \"<h1>x</h1>\", \"options\": {\"bleedMm\": 1000000000.0, \"pageRanges\": \"9999999-1\", \"pagesPerSheet\": -4}}"
+}

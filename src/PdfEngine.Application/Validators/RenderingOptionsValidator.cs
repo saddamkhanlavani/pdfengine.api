@@ -37,6 +37,15 @@ public class RenderingOptionsValidator : AbstractValidator<RenderingOptions>
             .When(x => !string.IsNullOrWhiteSpace(x.PageRanges))
             .WithMessage("PageRanges must look like '1-5' or '1,3,5-7'.");
 
+        // The regex accepts the SHAPE and says nothing about the numbers, so "9999999-1"
+        // and a 200-digit page number both passed it and went to Chromium, which answered
+        // with a protocol error the caller saw as HTTP 500 — the caller's malformed input
+        // reported as the server's fault. Found by tests/fuzz_gate.py, seed 20260820.
+        RuleFor(x => x.PageRanges)
+            .Must(HasSanePageNumbers)
+            .When(x => !string.IsNullOrWhiteSpace(x.PageRanges) && PageRangesRegex.IsMatch(x.PageRanges!))
+            .WithMessage("PageRanges must use page numbers between 1 and 1,000,000, and each range must start at or before it ends (so '5-3' is not a range).");
+
         RuleFor(x => x.RenderDelayMs)
             .InclusiveBetween(0, 10000)
             .WithMessage("RenderDelayMs must be between 0 and 10000ms — this is an extra settle delay for charts/animations, not a substitute for plan render-time limits.");
@@ -112,4 +121,29 @@ public class RenderingOptionsValidator : AbstractValidator<RenderingOptions>
                 .NotEmpty().WithMessage("Each attachment needs ContentBase64 — the file's bytes, base64-encoded.");
         });
     }
+
+    /// <summary>
+    /// Every page number is within a range a document could plausibly have, and every
+    /// span runs forwards. Parsed rather than pattern-matched because the failure being
+    /// prevented is arithmetic, not syntactic.
+    /// </summary>
+    private static bool HasSanePageNumbers(string? ranges)
+    {
+        const int MaxPage = 1_000_000;
+        foreach (var part in ranges!.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var span = part.Trim();
+            var dash = span.IndexOf('-');
+            if (dash < 0)
+            {
+                if (!int.TryParse(span, out var single) || single < 1 || single > MaxPage) return false;
+                continue;
+            }
+            if (!int.TryParse(span[..dash], out var start) ||
+                !int.TryParse(span[(dash + 1)..], out var end)) return false;
+            if (start < 1 || end < 1 || start > MaxPage || end > MaxPage || start > end) return false;
+        }
+        return true;
+    }
+
 }

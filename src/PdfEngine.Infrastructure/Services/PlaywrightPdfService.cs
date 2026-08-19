@@ -135,12 +135,30 @@ public class PlaywrightPdfService : IPdfService
         // route handler that already guards every subresource request, below.
         if (!isUrlMode)
         {
-            await _htmlSanitizerStage.ExecuteAsync(renderingContext, cancellationToken);
-            await _assetOptimizerStage.ExecuteAsync(renderingContext, cancellationToken);
-            await _domAnalyzer.ExecuteAsync(renderingContext, cancellationToken);
-            await _layoutAnalyzer.ExecuteAsync(renderingContext, cancellationToken);
-            await _typographyEngine.ExecuteAsync(renderingContext, cancellationToken);
-            await _paginationPlanner.ExecuteAsync(renderingContext, cancellationToken);
+            // These stages run BEFORE the attempt loop and were therefore outside the
+            // render budget entirely — bounded only by the caller hanging up. Measured
+            // with a 24 MB SVG found by tests/fuzz_gate.py: the planner ran for 342
+            // seconds, holding a tenant render slot the whole time, while the 30s budget
+            // that was supposed to bound the request sat unused inside the loop below.
+            // One request, one worker, five and a half minutes.
+            using var analysisCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            analysisCts.CancelAfter(planConfig.MaxRenderDurationSeconds * 1000);
+            var analysisToken = analysisCts.Token;
+            try
+            {
+                await _htmlSanitizerStage.ExecuteAsync(renderingContext, analysisToken);
+                await _assetOptimizerStage.ExecuteAsync(renderingContext, analysisToken);
+                await _domAnalyzer.ExecuteAsync(renderingContext, analysisToken);
+                await _layoutAnalyzer.ExecuteAsync(renderingContext, analysisToken);
+                await _typographyEngine.ExecuteAsync(renderingContext, analysisToken);
+                await _paginationPlanner.ExecuteAsync(renderingContext, analysisToken);
+            }
+            catch (OperationCanceledException) when (analysisCts.IsCancellationRequested
+                                                     && !cancellationToken.IsCancellationRequested)
+            {
+                return Result<byte[]>.Fail(Error.RenderTimeout(
+                    $"Analysing the document exceeded the {planConfig.MaxRenderDurationSeconds}s budget. The document is too expensive to lay out — reduce the number of elements, image size or SVG complexity."));
+            }
         }
 
         for (int attempt = 1; attempt <= 3; attempt++)
@@ -1146,7 +1164,8 @@ public class PlaywrightPdfService : IPdfService
                         null, clearPlannerBreaks: true);
                 }
 
-                var pdfBytes = await RenderDocumentAsync();
+                var pdfBytes = await WithRenderBudgetAsync(
+                    RenderDocumentAsync, page, timeoutCts.Token, timeoutMs, "PDF capture");
 
                 // T1-5 footnotes and T1-8 page floats. Runs BEFORE the cross-reference
                 // pass, deliberately. Reserving edge space moves whole blocks onto later
@@ -1209,7 +1228,8 @@ public class PlaywrightPdfService : IPdfService
                                     });
                                 }", pairs);
 
-                            pdfBytes = await RenderDocumentAsync();
+                            pdfBytes = await WithRenderBudgetAsync(
+                                RenderDocumentAsync, page, timeoutCts.Token, timeoutMs, "PDF re-capture");
                         }
 
                         var unresolved = renderingContext.Plan.PageRefRequests
@@ -1302,29 +1322,42 @@ public class PlaywrightPdfService : IPdfService
                     }
                 }
 
-                // Tagged output and engine-drawn text do not currently compose. Anything
-                // this engine draws into the page after Chromium has finished — running
-                // headers, footnote bands, page-float text, watermarks — is raw page
-                // content that is not in the structure tree, and PDF/UA-1 clause 7.1
-                // requires every mark to be either tagged or flagged as an /Artifact.
+                // What the engine draws after Chromium has finished is raw page content
+                // that is not in the structure tree, and PDF/UA-1 clause 7.1 requires
+                // every mark to be either tagged or flagged as an /Artifact.
                 //
-                // Measured 2026-08-19 with veraPDF 1.30.2: a tagged document on its own is
-                // conformant; the same document plus a running header fails 4 checks, and
-                // plus a footnote fails 11. Reported rather than left for an accessibility
-                // audit to find. Tracked as T3-1.
+                // Running headers, folios and watermarks ARE artifacts — page furniture
+                // that repeats and belongs to no sentence — and are now declared as such,
+                // so they compose with tagged output. Measured with veraPDF 1.30.2 on
+                // 2026-08-20: tagged alone 1492/0, tagged + running header 1560/0,
+                // tagged + watermark 1530/0, tagged + both 1598/0.
+                //
+                // Footnotes and page floats are NOT artifacts. A footnote is content the
+                // reader is meant to read, and marking it an artifact would satisfy the
+                // validator while hiding the footnote from the screen reader it exists
+                // for — a worse document that passes a better test. Making them conformant
+                // means adding real /Note structure elements, which is not done yet, so it
+                // is reported. Measured: tagged + footnote fails 7 checks of clause 7.1.
                 if (command.Options.GenerateTaggedPdf)
                 {
-                    var drawn = new List<string>();
-                    if (renderingContext.Plan.MarginBoxes.Count > 0) drawn.Add("running headers/footers");
-                    if (renderingContext.Plan.Footnotes.Count > 0) drawn.Add("footnotes");
-                    if (renderingContext.Plan.PageFloats.Count > 0) drawn.Add("page floats");
-                    if (!string.IsNullOrEmpty(command.Options.WatermarkText)
-                        || !string.IsNullOrEmpty(command.Options.WatermarkImageBase64)) drawn.Add("a watermark");
+                    var untagged = new List<string>();
+                    if (renderingContext.Plan.Footnotes.Count > 0) untagged.Add("footnotes");
+                    if (renderingContext.Plan.PageFloats.Count > 0) untagged.Add("page floats");
+                    if (command.Options.DisplayHeaderFooter
+                        && (!string.IsNullOrEmpty(command.Options.HeaderTemplate)
+                            || !string.IsNullOrEmpty(command.Options.FooterTemplate)))
+                    {
+                        // Chromium's own header/footer, unlike the engine's, is drawn
+                        // inside Chromium's content stream with no artifact marking, and
+                        // there is no hook to change that. The engine's `@page` margin
+                        // boxes are the conformant way to get the same result.
+                        untagged.Add("Chromium's headerTemplate/footerTemplate (use @page margin boxes instead, which ARE marked as artifacts)");
+                    }
 
-                    if (drawn.Count > 0)
+                    if (untagged.Count > 0)
                     {
                         command.Diagnostics.Warnings.Add(
-                            $"Accessibility warning: this document requests tagged (PDF/UA) output AND uses {string.Join(", ", drawn)}, which the engine draws into the page after the structure tree has been built. That content is therefore untagged, and the document will NOT pass PDF/UA-1 validation (measured: a running header costs 4 checks, a footnote 11). Either drop tagged output for this document or drop the engine-drawn features until they are added to the structure tree.");
+                            $"Accessibility warning: this document requests tagged (PDF/UA) output AND uses {string.Join(", ", untagged)}, which is not in the structure tree. The document will NOT pass PDF/UA-1 validation (measured with veraPDF 1.30.2: a footnote costs 7 checks of clause 7.1, Chromium's header/footer 3). Running headers via @page margin boxes and watermarks are unaffected — those are declared as artifacts and remain conformant.");
                     }
                 }
 
@@ -1484,6 +1517,16 @@ public class PlaywrightPdfService : IPdfService
                 PdfDurationHistogram.WithLabels(tenantName).Observe(stopwatch.Elapsed.TotalSeconds);
                 
                 return Result<byte[]>.Success(pdfBytes);
+            }
+            catch (TimeoutException ex)
+            {
+                // The render budget expired. Retrying costs the caller another full budget
+                // and ends the same way — the document is expensive, not unlucky — so this
+                // returns immediately and as 408, not as a 500. A 500 would say the server
+                // is broken for a document the server correctly declined to spend more
+                // time on.
+                _logger.LogWarning(ex, "Render budget exceeded on attempt {Attempt}; not retrying.", attempt);
+                return Result<byte[]>.Fail(Error.RenderTimeout(ex.Message));
             }
             catch (Exception ex)
             {
@@ -1827,6 +1870,19 @@ public class PlaywrightPdfService : IPdfService
                 ApplyPdfaCompliance(document, options, xmpOnly: needsXmpForTagging);
             }
 
+            // Runs last, so it also covers fonts embedded by the passes above. Only for
+            // documents that will actually be validated: the entry changes nothing about
+            // how the file renders, and adding it everywhere would alter bytes for every
+            // caller to fix a problem only conformance checking has.
+            if (needsPdfa || needsXmpForTagging)
+            {
+                var patched = AddMissingCidToGidMaps(document);
+                if (patched > 0)
+                {
+                    logger?.LogDebug("Added /CIDToGIDMap to {Count} embedded CIDFontType2 font(s).", patched);
+                }
+            }
+
             using var output = new MemoryStream();
             document.Save(output);
             var result = output.ToArray();
@@ -1877,6 +1933,91 @@ public class PlaywrightPdfService : IPdfService
         }
     }
 
+
+    /// <summary>
+    /// Opens an /Artifact marked-content block on a page. Everything drawn until
+    /// <see cref="EndArtifact"/> is declared to be page furniture rather than document
+    /// content, which is what PDF/UA-1 clause 7.1 requires of every mark that is not in
+    /// the structure tree.
+    ///
+    /// Only use this for content that genuinely IS furniture — running headers, folios,
+    /// watermarks. A footnote is not furniture: marking it an artifact would satisfy the
+    /// validator while HIDING the footnote from the screen reader it exists for, which is
+    /// a worse document that passes a better test.
+    ///
+    /// The block spans several content streams. That is legal: ISO 32000-1 7.8.2 defines
+    /// a page's /Contents array as a single stream formed by concatenation, so a BDC in
+    /// one stream and its EMC in another enclose everything appended between them.
+    /// </summary>
+
+    /// <summary>
+    /// Enforces the render budget on work Playwright will not cancel for us.
+    ///
+    /// `SetDefaultTimeout` bounds each Playwright ACTION, and `PdfAsync` is one action that
+    /// can take arbitrarily long inside Chromium — an SVG with 200,000 rects renders for
+    /// minutes while the timeout that was meant to bound it never fires. Found by
+    /// tests/fuzz_gate.py: a 5 MB document, comfortably under every size limit, held a
+    /// worker open past 75 seconds. That is a denial of service with a valid Content-Type.
+    ///
+    /// The page is closed on expiry, which is what actually stops Chromium working — a
+    /// cancelled token alone would leave the render running and the worker occupied.
+    /// </summary>
+    private async Task<T> WithRenderBudgetAsync<T>(
+        Func<Task<T>> work, IPage page, CancellationToken budget, int budgetMs, string step)
+    {
+        var task = work();
+        var expiry = Task.Delay(Timeout.Infinite, budget);
+        if (await Task.WhenAny(task, expiry) == task)
+        {
+            return await task;
+        }
+
+        _logger.LogWarning("Render exceeded its {BudgetMs}ms budget during {Step}; closing the page.", budgetMs, step);
+        try { await page.CloseAsync(); } catch (Exception ex) { _logger.LogDebug(ex, "Page close after budget expiry failed."); }
+        // Observe the abandoned task's exception so it does not surface as unobserved.
+        _ = task.ContinueWith(t => _ = t.Exception, TaskScheduler.Default);
+        throw new TimeoutException(
+            $"Rendering exceeded the {budgetMs / 1000}s budget during {step}. The document is too expensive to render — reduce the number of elements, image size or SVG complexity.");
+    }
+
+    private static void BeginArtifact(PdfSharpCore.Pdf.PdfPage page, string artifactType, string? subtype = null)
+    {
+        var dict = subtype is null
+            ? $"<< /Type {artifactType} >>"
+            : $"<< /Type {artifactType} /Subtype {subtype} >>";
+        AppendRawContent(page, $"/Artifact {dict} BDC\n");
+    }
+
+    private static void EndArtifact(PdfSharpCore.Pdf.PdfPage page) => AppendRawContent(page, "EMC\n");
+
+    private static void AppendRawContent(PdfSharpCore.Pdf.PdfPage page, string operators)
+    {
+        var content = page.Contents.AppendContent();
+        content.CreateStream(Encoding.ASCII.GetBytes(operators));
+    }
+
+    /// <summary>
+    /// Adds the /CIDToGIDMap every embedded CIDFontType2 is required to carry.
+    ///
+    /// ISO 32000-1 9.7.4 Table 117 makes it required for Type 2 CIDFonts, and PdfSharpCore
+    /// omits it. Nothing renders wrong — every viewer defaults to Identity — so it is
+    /// invisible until an accessibility audit runs, where it costs PDF/UA clause 7.21.3.2
+    /// on every document where the engine embedded a font of its own.
+    /// </summary>
+    private static int AddMissingCidToGidMaps(PdfSharpCore.Pdf.PdfDocument document)
+    {
+        var fixedUp = 0;
+        foreach (var item in document.Internals.GetAllObjects())
+        {
+            if (item is not PdfSharpCore.Pdf.PdfDictionary dict) continue;
+            if (dict.Elements.GetName("/Subtype") != "/CIDFontType2") continue;
+            if (dict.Elements.ContainsKey("/CIDToGIDMap")) continue;
+            dict.Elements["/CIDToGIDMap"] = new PdfSharpCore.Pdf.PdfName("/Identity");
+            fixedUp++;
+        }
+        return fixedUp;
+    }
+
     private static void ApplyWatermark(PdfSharpCore.Pdf.PdfDocument document, string watermarkText)
     {
         var font = new PdfSharpCore.Drawing.XFont("Helvetica", 48, PdfSharpCore.Drawing.XFontStyle.Bold);
@@ -1884,11 +2025,17 @@ public class PlaywrightPdfService : IPdfService
 
         foreach (var page in document.Pages)
         {
-            using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
+            // A watermark is page furniture, not content: a screen reader announcing
+            // "DRAFT" in the middle of a sentence is worse than not announcing it.
+            BeginArtifact(page, "/Pagination", "/Watermark");
+            using (var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append))
+            {
             gfx.TranslateTransform(page.Width / 2, page.Height / 2);
             gfx.RotateTransform(-45);
             var size = gfx.MeasureString(watermarkText, font);
             gfx.DrawString(watermarkText, font, brush, -size.Width / 2, 0);
+            }
+            EndArtifact(page);
         }
     }
 
@@ -1903,15 +2050,19 @@ public class PlaywrightPdfService : IPdfService
             // Size to a third of the page width, centered, preserving aspect ratio.
             foreach (var page in document.Pages)
             {
-                using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
-                var targetWidth = page.Width.Point / 3.0;
-                var targetHeight = targetWidth * (image.PixelHeight / (double)image.PixelWidth);
-                var x = (page.Width.Point - targetWidth) / 2;
-                var y = (page.Height.Point - targetHeight) / 2;
+                BeginArtifact(page, "/Pagination", "/Watermark");
+                using (var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append))
+                {
+                    var targetWidth = page.Width.Point / 3.0;
+                    var targetHeight = targetWidth * (image.PixelHeight / (double)image.PixelWidth);
+                    var x = (page.Width.Point - targetWidth) / 2;
+                    var y = (page.Height.Point - targetHeight) / 2;
 
-                var state = gfx.Save();
-                gfx.DrawImage(image, x, y, targetWidth, targetHeight);
-                gfx.Restore(state);
+                    var state = gfx.Save();
+                    gfx.DrawImage(image, x, y, targetWidth, targetHeight);
+                    gfx.Restore(state);
+                }
+                EndArtifact(page);
             }
         }
         catch (Exception ex)
@@ -2415,6 +2566,12 @@ public class PlaywrightPdfService : IPdfService
         PdfSharpCore.Pdf.PdfPage page, MarginBoxRequest box, string text,
         (double Left, double Right, double Top, double Bottom) contentBox)
     {
+        // A running header or folio is pagination furniture by definition: it repeats on
+        // every page and belongs to none of them. Declaring it so is what lets a tagged
+        // document keep its PDF/UA conformance while still having a header.
+        var subtype = box.Box.StartsWith("top", StringComparison.OrdinalIgnoreCase)
+            ? "/Header" : "/Footer";
+        BeginArtifact(page, "/Pagination", subtype);
         using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(
             page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
 
@@ -2443,6 +2600,10 @@ public class PlaywrightPdfService : IPdfService
 
         gfx.DrawString(text, font, brush,
             new PdfSharpCore.Drawing.XRect(left, y - box.FontSize, width, box.FontSize * 1.4), format);
+        // XGraphics writes into the stream it appended at construction, so the block has
+        // to be closed after it is disposed, not before.
+        gfx.Dispose();
+        EndArtifact(page);
     }
 
 

@@ -1,0 +1,65 @@
+{
+  "seed": 20260820,
+  "cases": 300,
+  "families": [
+    "bomb",
+    "entity",
+    "html",
+    "options",
+    "pdf",
+    "ssrf"
+  ],
+  "duration_s": 537.1,
+  "stats": {
+    "sent": 300,
+    "ok": 179,
+    "rejected": 114,
+    "server_error": 2,
+    "timeout": 5,
+    "dead": 0
+  },
+  "findings": [
+    {
+      "family": "decompression-bomb",
+      "why": "hang",
+      "detail": "no response within 75s",
+      "saved": "decompression-bomb-hang-d6a4d2cf0ccc.json"
+    },
+    {
+      "family": "decompression-bomb",
+      "why": "hang",
+      "detail": "no response within 75s",
+      "saved": "decompression-bomb-hang-d6a4d2cf0ccc.json"
+    },
+    {
+      "family": "options",
+      "why": "server-error",
+      "detail": "HTTP 500 in 1.4s: {\"code\":\"PDF_GENERATION_FAILED\",\"message\":\"Protocol error (Page.printToPDF): Page range is invalid (start > end)\",\"traceId\":\"0HNNU5EQUANHH:00000001\"}",
+      "saved": "options-server-error-20de4429cd66.json"
+    },
+    {
+      "family": "decompression-bomb",
+      "why": "hang",
+      "detail": "no response within 75s",
+      "saved": "decompression-bomb-hang-d6a4d2cf0ccc.json"
+    },
+    {
+      "family": "options",
+      "why": "server-error",
+      "detail": "HTTP 500 in 1.3s: {\"code\":\"PDF_GENERATION_FAILED\",\"message\":\"Protocol error (Page.printToPDF): Page range syntax error\",\"traceId\":\"0HNNU5EQUANN4:00000001\"}",
+      "saved": "options-server-error-d1643161c030.json"
+    },
+    {
+      "family": "decompression-bomb",
+      "why": "hang",
+      "detail": "no response within 75s",
+      "saved": "decompression-bomb-hang-d6a4d2cf0ccc.json"
+    },
+    {
+      "family": "decompression-bomb",
+      "why": "hang",
+      "detail": "no response within 75s",
+      "saved": "decompression-bomb-hang-d6a4d2cf0ccc.json"
+    }
+  ]
+}
