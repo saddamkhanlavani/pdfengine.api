@@ -21,7 +21,7 @@ public static class PlanRegistry
     {
         [PlanType.Free] = new()
         {
-            IncludedQuota = 100,
+            IncludedQuota = 250,
             OveragePricePerPdf = 0,
             RequestsPerMinute = 5,
             MaxConcurrency = 1,
@@ -29,24 +29,44 @@ public static class PlanRegistry
             MaxPages = 5,
             MaxAssetDownloadMb = 5.0
         },
-        [PlanType.Pro] = new()
+        [PlanType.Startup] = new()
         {
-            IncludedQuota = 5000,
-            OveragePricePerPdf = 0.02m, // ₹1.5 approx
-            RequestsPerMinute = 50,
-            MaxConcurrency = 3,
+            IncludedQuota = 3000,
+            OveragePricePerPdf = 0.003m,
+            RequestsPerMinute = 30,
+            MaxConcurrency = 2,
+            MaxRenderDurationSeconds = 30,
+            MaxPages = 30,
+            MaxAssetDownloadMb = 15.0
+        },
+        [PlanType.Boost] = new()
+        {
+            IncludedQuota = 12000,
+            OveragePricePerPdf = 0.002m,
+            RequestsPerMinute = 100,
+            MaxConcurrency = 5,
             MaxRenderDurationSeconds = 60,
-            MaxPages = 50,
-            MaxAssetDownloadMb = 20.0
+            MaxPages = 100,
+            MaxAssetDownloadMb = 30.0
+        },
+        [PlanType.Growth] = new()
+        {
+            IncludedQuota = 30000,
+            OveragePricePerPdf = 0.001m,
+            RequestsPerMinute = 250,
+            MaxConcurrency = 10,
+            MaxRenderDurationSeconds = 120,
+            MaxPages = 300,
+            MaxAssetDownloadMb = 50.0
         },
         [PlanType.Enterprise] = new()
         {
-            IncludedQuota = 50000,
-            OveragePricePerPdf = 0.01m,
-            RequestsPerMinute = 200,
-            MaxConcurrency = 10,
+            IncludedQuota = 100000,
+            OveragePricePerPdf = 0.0008m,
+            RequestsPerMinute = 1000,
+            MaxConcurrency = 100,
             MaxRenderDurationSeconds = 180,
-            MaxPages = 500,
+            MaxPages = 1000,
             MaxAssetDownloadMb = 100.0
         }
     };

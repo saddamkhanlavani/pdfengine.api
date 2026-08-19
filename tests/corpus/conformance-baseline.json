@@ -1,0 +1,8 @@
+{
+  "pdfa2b-basic": "PASS",
+  "pdfa3b-basic": "PASS",
+  "pdfa2b-tagged": "PASS",
+  "ua1-tagged-only": "PASS",
+  "ua1-tagged-pdfa": "PASS",
+  "pdfa2b-tagged-images": "PASS"
+}

@@ -1,0 +1,174 @@
+{
+  "T1-1a running header shows the CURRENT chapter on every page": {
+    "verdict": "PASS",
+    "detail": "4 pages; header adds an extra occurrence on every chapter page; issues=[]"
+  },
+  "T1-1b running header CARRIES FORWARD onto continuation pages": {
+    "verdict": "PASS",
+    "detail": "3 pages; title carried onto pages [2, 3] (want all after p1)"
+  },
+  "T1-1c counter(page)/counter(pages) render real numbers": {
+    "verdict": "PASS",
+    "detail": "4 pages; correct 'Page X of Y' on 4"
+  },
+  "T1-2 standard target-counter(attr(href), page) resolves real pages": {
+    "verdict": "PASS",
+    "detail": "mismatches=[]"
+  },
+  "T1-3 leader('.') produces dot leaders in the table of contents": {
+    "verdict": "PASS",
+    "detail": "4 dot-leader run(s) found, want >= 4"
+  },
+  "T1-4a @page :first applies a distinct cover margin": {
+    "verdict": "PASS",
+    "detail": "first-page left inset=176 vs body pages=['63', '63']"
+  },
+  "T1-4b @page :left / :right mirror binding margins": {
+    "verdict": "PASS",
+    "detail": "left insets=['28', '176', '28', '176'] (odd pages must be smaller)"
+  },
+  "T1-1d unresolved string-set is reported, not silently blank": {
+    "verdict": "PASS",
+    "detail": "warnings=0"
+  },
+  "T1-5a float: footnote is moved OUT of the text flow to the page bottom": {
+    "verdict": "PASS",
+    "detail": "footnote at 92% down the page (want >80%, inline renders at ~15%)"
+  },
+  "T1-5b a footnote lands on the SAME page as its call": {
+    "verdict": "PASS",
+    "detail": "2 pages; call on [2], note on [2]"
+  },
+  "T1-5c the reserved footnote band does NOT overlap the body text": {
+    "verdict": "PASS",
+    "detail": "3 pages; overlaps=[]; near-empty pages=[]"
+  },
+  "T1-5d ::footnote-call and ::footnote-marker number the notes": {
+    "verdict": "PASS",
+    "detail": "roman markers present=True; tail=' secondii here.\\n\\ni. MARKED_ONE first note.\\nii. MARKED_TWO second note.'"
+  },
+  "T1-5e a footnote too tall for the page is REPORTED, not silently overlapped": {
+    "verdict": "PASS",
+    "detail": "oversize footnote reported=True; [\"Layout warning: on page(s) 1 the footnotes and/or page floats are taller than the page's entire content area, so no amount of reflow can fit them a...\"]"
+  },
+  "T1-5f a document without footnotes pays nothing and is unchanged": {
+    "verdict": "PASS",
+    "detail": "2 vs 2 pages; identical text=True"
+  },
+  "T1-8a float: top is pulled to the top of the page, above the body text": {
+    "verdict": "PASS",
+    "detail": "float at 7% down (want <15%; inline renders at ~38%), body starts below it=True"
+  },
+  "T1-8b float: bottom is pulled to the bottom of the page, below the body text": {
+    "verdict": "PASS",
+    "detail": "float at 85% down (want >70%), body ends above it=True"
+  },
+  "T1-8c a bottom float and a footnote share the band without overlapping": {
+    "verdict": "PASS",
+    "detail": "body ends 682, float 701..761, note 773 (want strictly increasing)"
+  },
+  "T1-8d floated content carrying text is REPORTED as rasterized": {
+    "verdict": "PASS",
+    "detail": "rasterization reported=True"
+  },
+  "T1-8e ordinary float: left/right is untouched": {
+    "verdict": "PASS",
+    "detail": "text preserved=True, no page-float handling=True, images=0"
+  },
+  "T1-7a a named page gets its own paper size and orientation": {
+    "verdict": "PASS",
+    "detail": "page shapes=[(842, 595), (595, 842), (595, 842), (420, 595)] (cover landscape=True, body portrait=True, A5 appendix=True)"
+  },
+  "T1-7b a named page's margins apply to its run and nowhere else": {
+    "verdict": "PASS",
+    "detail": "left insets=[148, 63, 63, 34] (want cover >> body >> appendix)"
+  },
+  "T1-7c page counters stay continuous across the stitch": {
+    "verdict": "PASS",
+    "detail": "3 pages; correct 'Page X of Y' on 3"
+  },
+  "T1-7d cross-references resolve against the STITCHED document": {
+    "verdict": "PASS",
+    "detail": "4 pages; mismatches=[]"
+  },
+  "T1-7e footnotes still land on their own page when it has different geometry": {
+    "verdict": "PASS",
+    "detail": "2 pages; portrait note p1 at 93%, landscape note p2 at 92% (landscape=True)"
+  },
+  "T1-7f a page name with no @page rule is REPORTED, not silently ignored": {
+    "verdict": "PASS",
+    "detail": "undefined page name reported=True"
+  },
+  "T1-7g a document without named pages is rendered in one pass, unchanged": {
+    "verdict": "PASS",
+    "detail": "2 pages; named-page notices=0 (want 0)"
+  },
+  "T1-9a per-page mode reclaims the band on pages carrying no footnotes": {
+    "verdict": "PASS",
+    "detail": "footnote-free page bottom gap 143pt uniform -> 67pt per-page (reclaimed 76pt, want >20)"
+  },
+  "T1-9b per-page mode still never overlaps the body text": {
+    "verdict": "PASS",
+    "detail": "overlapping pages={'uniform': [], 'per-page': []}; footnote blocks placed={'uniform': 1, 'per-page': 1}"
+  },
+  "T1-9c per-page mode falls back to uniform rather than to overlapping text": {
+    "verdict": "PASS",
+    "detail": "degradation reported=True"
+  },
+  "T1-9d the engine CHOOSES the reservation strategy and says why": {
+    "verdict": "PASS",
+    "detail": "Footnote reservation: PER-PAGE chosen automatically. Footnotes are unevenly spread across 5 page(s), so reserving unifor"
+  },
+  "T1-9e an UNEVEN document is given per-page, an EVEN one is not": {
+    "verdict": "PASS",
+    "detail": "uneven document -> per-page; even document -> uniform"
+  },
+  "T1-9f an explicit mode overrides the automatic choice": {
+    "verdict": "PASS",
+    "detail": "auto-decision suppressed=True; overlaps=0"
+  },
+  "REG-0 running headers survive encryption, watermarking and outlines": {
+    "verdict": "PASS",
+    "detail": "combinations broken=none"
+  },
+  "REG-1 text-transform does not break running headers": {
+    "verdict": "PASS",
+    "detail": "3 pages; every page headed correctly"
+  },
+  "REG-2 @page :first does not leak into later named-page runs": {
+    "verdict": "PASS",
+    "detail": "left insets=[205, 63, 63, 63] (only page 1 may carry the cover margin)"
+  },
+  "REG-3 a named page still applies when :first is also declared": {
+    "verdict": "PASS",
+    "detail": "page shapes=[(595, 842), (842, 595), (595, 842)]; landscape pages=[2] (want exactly [2])"
+  },
+  "REG-4 a floated figure's own text does not poison its section's header": {
+    "verdict": "PASS",
+    "detail": "2 pages; 'Figure section' occurrences on its page = 2 (want >=2)"
+  },
+  "T1-5g emphasis and links inside a footnote reach the band intact": {
+    "verdict": "PASS",
+    "detail": "text intact=True; links=['https://example.invalid/filing']"
+  },
+  "T1-5h footnote emphasis is drawn in a REAL bold and italic face": {
+    "verdict": "PASS",
+    "detail": "bold faces=['Helvetica-Bold', 'Carlito,Bold']; italic faces=['Carlito,Italic']; text intact=True"
+  },
+  "T1-8f a floated table keeps a selectable text layer over its image": {
+    "verdict": "PASS",
+    "detail": "image drawn=True; cells missing from the text layer=[]"
+  },
+  "T1-6a a single line is never stranded across a page break": {
+    "verdict": "PASS",
+    "detail": "lines per page=[28, 2], pages with a single stranded line=[]"
+  },
+  "T1-6b caller-supplied orphans/widows actually change the break": {
+    "verdict": "PASS",
+    "detail": "default carried 2 onto the next page, widows:4 carried 5 (default=[28, 2] strict=[25, 5])"
+  },
+  "T1-6c a block taller than a page is REPORTED as unsatisfiable": {
+    "verdict": "PASS",
+    "detail": "unsatisfiable-block warning emitted=True"
+  }
+}

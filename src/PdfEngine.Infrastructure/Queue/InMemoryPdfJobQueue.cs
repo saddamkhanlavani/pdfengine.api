@@ -29,4 +29,10 @@ public class InMemoryPdfJobQueue : IPdfJobQueue
     {
         return await _queue.Reader.ReadAsync(cancellationToken);
     }
+
+    public ValueTask EnqueueDeadLetterAsync(PdfJob job)
+    {
+        // No-op for in-memory queue
+        return ValueTask.CompletedTask;
+    }
 }

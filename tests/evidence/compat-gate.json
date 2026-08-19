@@ -1,0 +1,46 @@
+{
+  "A1 Grid, Flexbox and CSS variables all lay out correctly": {
+    "verdict": "PASS",
+    "detail": "missing content=[] ink=0.005"
+  },
+  "A2 pseudo-elements and generated content appear in output": {
+    "verdict": "PASS",
+    "detail": "extracted='PREFIX-CORE-SUFFIX'"
+  },
+  "A3 transforms, shadows and gradients render as ink": {
+    "verdict": "PASS",
+    "detail": "ink=0.081 glyphs present='ADEFMNORST'"
+  },
+  "A4 print CSS and @page rules are honored": {
+    "verdict": "PASS",
+    "detail": "page=595x420 landscape=True print-only honored=True"
+  },
+  "A5 a missing image is REPORTED, not silently dropped": {
+    "verdict": "PASS",
+    "detail": "reported=True signals=2"
+  },
+  "A6 content overflowing the page is diagnosed": {
+    "verdict": "PASS",
+    "detail": "reported=True warnings=1"
+  },
+  "A7 an off-page absolutely positioned element is diagnosed": {
+    "verdict": "PASS",
+    "detail": "reported=True content present=False warnings=1"
+  },
+  "B1a webfont is actually embedded, not silently substituted": {
+    "verdict": "PASS",
+    "detail": "embedded fonts=['', 'Outfit-Regular'] Outfit present=True"
+  },
+  "B1b no tofu: every glyph in a multi-script line has real coverage": {
+    "verdict": "PASS",
+    "detail": "all scripts extracted=True ink=0.0021 (tofu inflates ink)"
+  },
+  "B1c font fallback chain resolves when the first family is unavailable": {
+    "verdict": "PASS",
+    "detail": "text present=True ink=0.0018"
+  },
+  "B1d bold and italic are distinct faces, not synthesized-away": {
+    "verdict": "PASS",
+    "detail": "distinct embedded faces=2: ['', 'Outfit-Regular']"
+  }
+}

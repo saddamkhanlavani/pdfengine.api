@@ -32,6 +32,8 @@ public class PdfJob
     
     public string Environment { get; set; } = "Production"; // "Production" or "Development"
     
+    public string? DiagnosticsJson { get; set; }
+    
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
 }

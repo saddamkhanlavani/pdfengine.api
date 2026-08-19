@@ -18,11 +18,25 @@ public class AccountController : ControllerBase
 {
     private readonly PdfEngineDbContext _context;
     private readonly IPdfService _pdfService;
+    private readonly IPdfStorage _pdfStorage;
+    private readonly IEmailService _emailService;
 
-    public AccountController(PdfEngineDbContext context, IPdfService pdfService)
+    public AccountController(
+        PdfEngineDbContext context, 
+        IPdfService pdfService, 
+        IPdfStorage pdfStorage,
+        IEmailService emailService)
     {
         _context = context;
         _pdfService = pdfService;
+        _pdfStorage = pdfStorage;
+        _emailService = emailService;
+    }
+
+    private bool IsDeveloper()
+    {
+        var user = HttpContext.Items["User"] as User;
+        return user != null && user.Role == "Developer";
     }
 
     private async Task EnsureSeededUsageRecords(Guid tenantId)
@@ -101,7 +115,8 @@ public class AccountController : ControllerBase
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
-        await EnsureSeededUsageRecords(client.Id);
+        // Seeding disabled for production SaaS
+        // await EnsureSeededUsageRecords(client.Id);
 
         var totalCount = await _context.UsageRecords
             .CountAsync(i => i.TenantId == client.Id && i.Success);
@@ -112,24 +127,24 @@ public class AccountController : ControllerBase
 
         var avgDuration = await _context.UsageRecords
             .Where(i => i.TenantId == client.Id && i.Success)
-            .AverageAsync(i => (double?)i.DurationMs) ?? 350.0;
+            .AverageAsync(i => (double?)i.DurationMs) ?? 0.0;
 
         var totalAll = await _context.UsageRecords
             .CountAsync(i => i.TenantId == client.Id);
-        var successRatePercent = totalAll > 0 ? (double)totalCount / totalAll * 100 : 100.0;
+        var successRatePercent = totalAll > 0 ? (double)totalCount / totalAll * 100 : 0.0;
 
         return Ok(new
         {
-            totalRequests = totalCount, 
+            totalRequests = totalAll, 
             successRate = $"{successRatePercent:F1}%",
-            avgLatency = $"{Math.Round(avgDuration)}ms",
+            avgLatency = totalAll > 0 ? $"{Math.Round(avgDuration)}ms" : "0ms",
             remainingQuota = Math.Max(0, 10000 - totalCount),
             failureCount24h = failures
         });
     }
 
     [HttpGet("me")]
-    public async Task<IActionResult> GetMe()
+    public IActionResult GetMe()
     {
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
@@ -137,11 +152,27 @@ public class AccountController : ControllerBase
         var user = HttpContext.Items["User"] as User;
         var email = user?.Email ?? "saddam@example.com";
         var role = user?.Role ?? "SuperAdmin";
+        var fullName = user?.FullName ?? string.Empty;
+        var programmingLanguage = user?.ProgrammingLanguage ?? string.Empty;
+        var discoverySource = user?.DiscoverySource ?? string.Empty;
+        var onboardingCompleted = user?.OnboardingCompleted ?? false;
+        var onboardingStep = user?.OnboardingStep ?? 1;
+        var useCase = user?.UseCase ?? string.Empty;
+        var teamSize = user?.TeamSize ?? string.Empty;
+        var targetLanguage = user?.TargetLanguage ?? string.Empty;
 
         return Ok(new {
             name = client.Name,
             email = email,
             role = role, 
+            fullName = fullName,
+            programmingLanguage = programmingLanguage,
+            discoverySource = discoverySource,
+            onboardingCompleted = onboardingCompleted,
+            onboardingStep = onboardingStep,
+            useCase = useCase,
+            teamSize = teamSize,
+            targetLanguage = targetLanguage,
             plan = client.Plan.ToString(),
             is2faEnabled = client.IsTwoFactorEnabled,
             settings = new {
@@ -156,6 +187,32 @@ public class AccountController : ControllerBase
                 }
             }
         });
+    }
+
+    public class OnboardingRequest
+    {
+        public string UseCase { get; set; } = string.Empty;
+        public string TeamSize { get; set; } = string.Empty;
+        public string TargetLanguage { get; set; } = string.Empty;
+    }
+
+    [HttpPost("onboarding")]
+    public async Task<IActionResult> CompleteOnboarding([FromBody] OnboardingRequest request)
+    {
+        var user = HttpContext.Items["User"] as User;
+        if (user == null) return Unauthorized();
+
+        var dbUser = await _context.Users.FindAsync(user.Id);
+        if (dbUser == null) return NotFound();
+
+        dbUser.UseCase = request.UseCase;
+        dbUser.TeamSize = request.TeamSize;
+        dbUser.TargetLanguage = request.TargetLanguage;
+        dbUser.OnboardingCompleted = true;
+        dbUser.OnboardingStep = 2; // Step 2 is fully complete
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Onboarding completed successfully" });
     }
 
     [HttpGet("team")]
@@ -217,7 +274,8 @@ public class AccountController : ControllerBase
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
-        await EnsureSeededUsageRecords(client.Id);
+        // Seeding disabled for production SaaS
+        // await EnsureSeededUsageRecords(client.Id);
 
         var startDate = DateTime.UtcNow.Date.AddDays(-(days - 1));
 
@@ -232,26 +290,25 @@ public class AccountController : ControllerBase
             .OrderBy(x => x.Date)
             .ToListAsync();
 
-        var data = rawData.Select(x => new
+        // Generate complete date map with 0 counts by default
+        var dateMap = new Dictionary<string, int>();
+        for (int i = days - 1; i >= 0; i--)
         {
-            date = x.Date.ToString(days > 30 ? "MMM yyyy" : "MMM dd"),
-            count = x.Count
-        }).ToList();
-
-        if (data.Count == 0)
-        {
-            // Seed dummy data for the graph if no actual usage exists
-            var dummyData = new List<object>();
-            for (int i = days - 1; i >= 0; i--)
-            {
-                dummyData.Add(new
-                {
-                    date = DateTime.UtcNow.Date.AddDays(-i).ToString(days > 30 ? "MMM yyyy" : "MMM dd"),
-                    count = new Random().Next(10, 500)
-                });
-            }
-            return Ok(dummyData);
+            var dateStr = DateTime.UtcNow.Date.AddDays(-i).ToString(days > 30 ? "MMM yyyy" : "MMM dd");
+            dateMap[dateStr] = 0;
         }
+
+        foreach (var item in rawData)
+        {
+            var dateStr = item.Date.ToString(days > 30 ? "MMM yyyy" : "MMM dd");
+            dateMap[dateStr] = item.Count;
+        }
+
+        var data = dateMap.Select(kvp => new
+        {
+            date = kvp.Key,
+            count = kvp.Value
+        }).ToList();
 
         return Ok(data);
     }
@@ -262,7 +319,8 @@ public class AccountController : ControllerBase
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
-        await EnsureSeededUsageRecords(client.Id);
+        // Seeding disabled for production SaaS
+        // await EnsureSeededUsageRecords(client.Id);
 
         var query = _context.UsageRecords
             .Where(u => u.TenantId == client.Id);
@@ -277,7 +335,7 @@ public class AccountController : ControllerBase
             .Take(10)
             .Select(u => new {
                 jobId = u.RequestId,
-                documentName = "Document_" + u.Id.ToString().Substring(0, 4) + ".pdf",
+                documentName = u.DocumentName,
                 status = u.Success ? "SUCCESS" : "FAILED",
                 errorMessage = u.ErrorMessage,
                 latency = u.DurationMs + "ms",
@@ -287,7 +345,8 @@ public class AccountController : ControllerBase
                 authMechanism = u.AuthMechanism,
                 isWatermarked = u.IsWatermarked,
                 sandboxEnvironment = u.SandboxEnvironment,
-                userAgent = u.UserAgent
+                userAgent = u.UserAgent,
+                cost = u.Cost
             })
             .ToListAsync();
 
@@ -300,75 +359,114 @@ public class AccountController : ControllerBase
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
-        var filePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "pdfengine_storage", $"{jobId}.pdf");
-        if (!System.IO.File.Exists(filePath))
+        var user = HttpContext.Items["User"] as User;
+        var record = await _context.UsageRecords.FirstOrDefaultAsync(u => u.RequestId == jobId && u.TenantId == client.Id);
+        if (record == null)
         {
-            var record = await _context.UsageRecords.FirstOrDefaultAsync(u => u.RequestId == jobId && u.TenantId == client.Id);
-            if (record == null)
+            return NotFound(new { message = "PDF file has expired or is no longer available." });
+        }
+
+        if (user != null && user.Role == "SuperAdmin" && record.TenantId != user.TenantId)
+        {
+            return StatusCode(403, new { error = "SuperAdmins are restricted from viewing or downloading client-generated PDFs." });
+        }
+
+        // 1. Resolve stored FileUrl if it exists
+        if (!string.IsNullOrEmpty(record.FileUrl))
+        {
+            if (record.FileUrl.StartsWith("http"))
             {
-                return NotFound(new { message = "PDF file has expired or is no longer available." });
-            }
-
-            // Generate a placeholder PDF for seeded/expired records using the PDF engine!
-            try
-            {
-                var html = $@"
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <style>
-                            body {{ font-family: sans-serif; padding: 50px; background: #0f172a; color: #f1f5f9; }}
-                            .card {{ border: 1px solid #334155; border-radius: 12px; padding: 30px; background: #1e293b; }}
-                            h1 {{ color: #3b82f6; margin-top: 0; }}
-                            .meta {{ margin-bottom: 20px; font-size: 14px; color: #94a3b8; }}
-                            .meta p {{ margin: 6px 0; }}
-                        </style>
-                    </head>
-                    <body>
-                        <div class='card'>
-                            <h1>PDFEngine Document Archive</h1>
-                            <div class='meta'>
-                                <p><strong>Request ID:</strong> {record.RequestId}</p>
-                                <p><strong>Timestamp:</strong> {record.Timestamp:yyyy-MM-dd HH:mm:ss}</p>
-                                <p><strong>Status:</strong> {(record.Success ? "SUCCESS" : "FAILED")}</p>
-                                <p><strong>Latency:</strong> {record.DurationMs}ms</p>
-                            </div>
-                            <p>This is a placeholder PDF generated for demonstration and local testing of seeded/historical usage logs.</p>
-                        </div>
-                    </body>
-                    </html>";
-
-                var command = new GeneratePdfCommand
+                try
                 {
-                    Client = client,
-                    DocumentName = $"document_{jobId}",
-                    HtmlContent = html
-                };
-
-                var renderResult = await _pdfService.GenerateAsync(command);
-                if (renderResult.IsSuccess && renderResult.Value != null)
-                {
-                    var dir = System.IO.Path.GetDirectoryName(filePath);
-                    if (!string.IsNullOrEmpty(dir) && !System.IO.Directory.Exists(dir))
+                    var stream = await _pdfStorage.GetStreamAsync(record.FileUrl);
+                    if (stream != null)
                     {
-                        System.IO.Directory.CreateDirectory(dir);
+                        var displayIdVal = jobId.Length >= 8 ? jobId.Substring(0, 8) : jobId;
+                        return File(stream, "application/pdf", $"document_{displayIdVal}.pdf");
                     }
-                    await System.IO.File.WriteAllBytesAsync(filePath, renderResult.Value);
                 }
-                else
+                catch
                 {
-                    return NotFound(new { message = "PDF file has expired and placeholder generation failed." });
+                    return Redirect(record.FileUrl);
                 }
             }
-            catch (Exception ex)
+
+            if (System.IO.File.Exists(record.FileUrl))
             {
-                return NotFound(new { message = $"PDF file has expired and placeholder generation failed: {ex.Message}" });
+                var fileBytes = await System.IO.File.ReadAllBytesAsync(record.FileUrl);
+                var displayIdVal = jobId.Length >= 8 ? jobId.Substring(0, 8) : jobId;
+                return File(fileBytes, "application/pdf", $"document_{displayIdVal}.pdf");
             }
         }
 
-        var pdfBytes = await System.IO.File.ReadAllBytesAsync(filePath);
-        var displayId = jobId.Length >= 8 ? jobId.Substring(0, 8) : jobId;
-        return File(pdfBytes, "application/pdf", $"document_{displayId}.pdf");
+        // 2. Try default local storage fallback
+        var filePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "pdfengine_storage", $"{jobId}.pdf");
+        if (System.IO.File.Exists(filePath))
+        {
+            var diskBytes = await System.IO.File.ReadAllBytesAsync(filePath);
+            var displayIdDisk = jobId.Length >= 8 ? jobId.Substring(0, 8) : jobId;
+            return File(diskBytes, "application/pdf", $"document_{displayIdDisk}.pdf");
+        }
+
+        // 3. Generate a placeholder PDF for seeded/expired records using the PDF engine!
+        try
+        {
+            var html = $@"
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body {{ font-family: sans-serif; padding: 50px; background: #0f172a; color: #f1f5f9; }}
+                        .card {{ border: 1px solid #334155; border-radius: 12px; padding: 30px; background: #1e293b; }}
+                        h1 {{ color: #3b82f6; margin-top: 0; }}
+                        .meta {{ margin-bottom: 20px; font-size: 14px; color: #94a3b8; }}
+                        .meta p {{ margin: 6px 0; }}
+                    </style>
+                </head>
+                <body>
+                    <div class='card'>
+                        <h1>PDFEngine Document Archive</h1>
+                        <div class='meta'>
+                            <p><strong>Request ID:</strong> {record.RequestId}</p>
+                            <p><strong>Timestamp:</strong> {record.Timestamp:yyyy-MM-dd HH:mm:ss}</p>
+                            <p><strong>Status:</strong> {(record.Success ? "SUCCESS" : "FAILED")}</p>
+                            <p><strong>Latency:</strong> {record.DurationMs}ms</p>
+                        </div>
+                        <p>This is a placeholder PDF generated for demonstration and local testing of seeded/historical usage logs.</p>
+                    </div>
+                </body>
+                </html>";
+
+            var command = new GeneratePdfCommand
+            {
+                Client = client,
+                DocumentName = $"document_{jobId}",
+                HtmlContent = html
+            };
+
+            var renderResult = await _pdfService.GenerateAsync(command);
+            if (renderResult.IsSuccess && renderResult.Value != null)
+            {
+                var dir = System.IO.Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(dir) && !System.IO.Directory.Exists(dir))
+                {
+                    System.IO.Directory.CreateDirectory(dir);
+                }
+                await System.IO.File.WriteAllBytesAsync(filePath, renderResult.Value);
+            }
+            else
+            {
+                return NotFound(new { message = "PDF file has expired and placeholder generation failed." });
+            }
+        }
+        catch (Exception ex)
+        {
+            return NotFound(new { message = $"PDF file has expired and placeholder generation failed: {ex.Message}" });
+        }
+
+        var placeholderBytes = await System.IO.File.ReadAllBytesAsync(filePath);
+        var displayIdPlaceholder = jobId.Length >= 8 ? jobId.Substring(0, 8) : jobId;
+        return File(placeholderBytes, "application/pdf", $"document_{displayIdPlaceholder}.pdf");
     }
 
     [HttpGet("keys")]
@@ -402,6 +500,8 @@ public class AccountController : ControllerBase
     [HttpPost("keys")]
     public async Task<IActionResult> CreateKey([FromBody] CreateKeyRequest request)
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from API key modifications.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -425,6 +525,8 @@ public class AccountController : ControllerBase
         _context.ApiKeys.Add(apiKey);
         await _context.SaveChangesAsync();
 
+        await WriteAuditLogAsync(client.Id, "API Key Created", $"{{\"keyId\":\"{apiKey.Id}\",\"environment\":\"{apiKey.Environment}\"}}");
+
         return Ok(new { 
             id = apiKey.Id,
             name = request.Name,
@@ -438,6 +540,8 @@ public class AccountController : ControllerBase
     [HttpPost("keys/rotate/{id}")]
     public async Task<IActionResult> RotateKey(Guid id)
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from API key modifications.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -466,12 +570,64 @@ public class AccountController : ControllerBase
         _context.ApiKeys.Add(newKey);
         await _context.SaveChangesAsync();
 
+        await WriteAuditLogAsync(client.Id, "API Key Rotated", $"{{\"revokedKeyId\":\"{key.Id}\",\"newKeyId\":\"{newKey.Id}\"}}");
+
         return Ok(new { message = "Key rotated", newKey = newKey.Key });
+    }
+
+    [HttpDelete("keys/{id}")]
+    public async Task<IActionResult> RevokeKey(Guid id)
+    {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from API key modifications.");
+
+        var client = HttpContext.Items["Client"] as Tenant;
+        if (client == null) return Unauthorized();
+
+        var key = await _context.ApiKeys.FirstOrDefaultAsync(k => k.Id == id && k.TenantId == client.Id);
+        if (key == null) return NotFound();
+
+        key.IsRevoked = true;
+        await _context.SaveChangesAsync();
+
+        await WriteAuditLogAsync(client.Id, "API Key Revoked", $"{{\"keyId\":\"{key.Id}\"}}");
+
+        return Ok(new { message = "Key revoked successfully." });
+    }
+
+    public class UpdateKeyRequest
+    {
+        public string? IpWhitelist { get; set; }
+        public string? Scopes { get; set; }
+    }
+
+    [HttpPut("keys/{id}")]
+    public async Task<IActionResult> UpdateKey(Guid id, [FromBody] UpdateKeyRequest request)
+    {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from API key modifications.");
+
+        var client = HttpContext.Items["Client"] as Tenant;
+        if (client == null) return Unauthorized();
+
+        var key = await _context.ApiKeys.FirstOrDefaultAsync(k => k.Id == id && k.TenantId == client.Id);
+        if (key == null) return NotFound();
+
+        key.IpWhitelist = request.IpWhitelist;
+        if (request.Scopes != null)
+        {
+            key.Scopes = request.Scopes;
+        }
+        await _context.SaveChangesAsync();
+
+        await WriteAuditLogAsync(client.Id, "API Key Updated", $"{{\"keyId\":\"{key.Id}\",\"ipWhitelist\":\"{key.IpWhitelist}\",\"scopes\":\"{key.Scopes}\"}}");
+
+        return Ok(new { message = "Key updated successfully.", key = new { id = key.Id, ipWhitelist = key.IpWhitelist, scopes = key.Scopes } });
     }
 
     [HttpPost("2fa/setup")]
     public async Task<IActionResult> Setup2Fa()
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from modifying security configurations.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -500,6 +656,8 @@ public class AccountController : ControllerBase
     [HttpPost("2fa/verify")]
     public async Task<IActionResult> Verify2Fa([FromBody] Verify2FaRequest request)
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from modifying security configurations.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -540,6 +698,7 @@ public class AccountController : ControllerBase
             }
 
             await _context.SaveChangesAsync();
+            await WriteAuditLogAsync(dbTenant.Id, "Two-Factor Authentication Setup Completed", "{}");
             return Ok(new { message = "2FA Enabled", recoveryCodes = recoveryCodes });
         }
 
@@ -549,6 +708,8 @@ public class AccountController : ControllerBase
     [HttpPost("2fa/disable")]
     public async Task<IActionResult> Disable2Fa()
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from modifying security configurations.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -564,12 +725,16 @@ public class AccountController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        await WriteAuditLogAsync(client.Id, "Two-Factor Authentication Disabled", "{}");
+
         return Ok(new { success = true });
     }
 
     [HttpPost("settings/notifications")]
     public async Task<IActionResult> UpdateNotifications([FromBody] System.Text.Json.JsonElement settings)
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from settings modifications.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -587,6 +752,8 @@ public class AccountController : ControllerBase
     [HttpPost("settings/limits")]
     public async Task<IActionResult> UpdateLimits([FromBody] System.Text.Json.JsonElement limits)
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from settings modifications.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -602,6 +769,8 @@ public class AccountController : ControllerBase
     [HttpPut("profile")]
     public async Task<IActionResult> UpdateProfile([FromBody] System.Text.Json.JsonElement profile)
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from settings modifications.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -633,7 +802,24 @@ public class AccountController : ControllerBase
         // Validate against the authenticated user if available, otherwise fallback to tenant password for mock mode
         if (user != null)
         {
-            if (user.PasswordHash != currentPassword)
+            bool currentMatches = false;
+            try
+            {
+                if (user.PasswordHash.StartsWith("$2") && BCrypt.Net.BCrypt.Verify(currentPassword, user.PasswordHash))
+                {
+                    currentMatches = true;
+                }
+                else if (user.PasswordHash == currentPassword)
+                {
+                    currentMatches = true;
+                }
+            }
+            catch
+            {
+                if (user.PasswordHash == currentPassword) currentMatches = true;
+            }
+
+            if (!currentMatches)
             {
                 return BadRequest(new { error = "Incorrect current password" });
             }
@@ -641,7 +827,7 @@ public class AccountController : ControllerBase
             var dbUser = await _context.Users.FindAsync(user.Id);
             if (dbUser != null)
             {
-                dbUser.PasswordHash = newPassword;
+                dbUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
             }
         }
         else
@@ -650,11 +836,35 @@ public class AccountController : ControllerBase
             var dbTenant = await _context.Tenants.FindAsync(client.Id);
             if (dbTenant != null)
             {
-                if (dbTenant.PasswordHash != currentPassword && !string.IsNullOrEmpty(dbTenant.PasswordHash))
+                bool currentMatches = false;
+                try
+                {
+                    if (!string.IsNullOrEmpty(dbTenant.PasswordHash))
+                    {
+                        if (dbTenant.PasswordHash.StartsWith("$2") && BCrypt.Net.BCrypt.Verify(currentPassword, dbTenant.PasswordHash))
+                        {
+                            currentMatches = true;
+                        }
+                        else if (dbTenant.PasswordHash == currentPassword)
+                        {
+                            currentMatches = true;
+                        }
+                    }
+                    else
+                    {
+                        currentMatches = true;
+                    }
+                }
+                catch
+                {
+                    if (dbTenant.PasswordHash == currentPassword) currentMatches = true;
+                }
+
+                if (!currentMatches)
                 {
                     return BadRequest(new { error = "Incorrect current password" });
                 }
-                dbTenant.PasswordHash = newPassword;
+                dbTenant.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
             }
         }
 
@@ -665,6 +875,8 @@ public class AccountController : ControllerBase
     [HttpDelete("terminate")]
     public async Task<IActionResult> TerminateAccount()
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from account deletion.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -680,6 +892,8 @@ public class AccountController : ControllerBase
     [HttpPost("team/invite")]
     public async Task<IActionResult> InviteMember([FromBody] System.Text.Json.JsonElement member)
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from team modifications.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -688,23 +902,97 @@ public class AccountController : ControllerBase
         
         if (string.IsNullOrEmpty(email)) return BadRequest(new { error = "Email is required" });
 
-        var newUser = new User
+        var exists = await _context.Users.AnyAsync(u => u.Email == email);
+        if (exists) return BadRequest(new { error = "User already exists" });
+
+        var token = Guid.NewGuid().ToString("N");
+        var invitation = new Invitation
         {
+            Id = Guid.NewGuid(),
             TenantId = client.Id,
             Email = email,
             Role = role,
-            CreatedAt = DateTime.UtcNow
+            Token = token,
+            ExpiresAt = DateTime.UtcNow.AddDays(7)
         };
 
-        _context.Users.Add(newUser);
+        _context.Invitations.Add(invitation);
         await _context.SaveChangesAsync();
 
-        return Ok(new { message = "Member invited successfully", user = new { id = newUser.Id, email = newUser.Email, role = newUser.Role, createdAt = newUser.CreatedAt } });
+        try
+        {
+            await _emailService.SendTeamInvitationEmailAsync(email, client.Name, token);
+        }
+        catch (Exception ex)
+        {
+            // Log warning
+        }
+
+        return Ok(new { message = "Invitation sent successfully", invitation = new { id = invitation.Id, email = invitation.Email, role = invitation.Role, expiresAt = invitation.ExpiresAt } });
+    }
+
+    [HttpGet("team/invitations")]
+    public async Task<IActionResult> GetPendingInvitations()
+    {
+        var client = HttpContext.Items["Client"] as Tenant;
+        if (client == null) return Unauthorized();
+
+        var invites = await _context.Invitations
+            .Where(i => i.TenantId == client.Id && i.AcceptedAt == null && i.ExpiresAt > DateTime.UtcNow)
+            .Select(i => new {
+                id = i.Id,
+                email = i.Email,
+                role = i.Role,
+                expiresAt = i.ExpiresAt
+            })
+            .ToListAsync();
+
+        return Ok(invites);
+    }
+
+    [HttpPost("team/approve/{userId}")]
+    public async Task<IActionResult> ApproveJoinRequest(Guid userId)
+    {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from team modifications.");
+
+        var client = HttpContext.Items["Client"] as Tenant;
+        if (client == null) return Unauthorized();
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == client.Id);
+        if (user == null) return NotFound(new { error = "User not found" });
+
+        if (user.Role != "PendingApproval") return BadRequest(new { error = "User is not pending approval" });
+
+        user.Role = "Developer";
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "User approved successfully" });
+    }
+
+    [HttpPost("team/reject/{userId}")]
+    public async Task<IActionResult> RejectJoinRequest(Guid userId)
+    {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from team modifications.");
+
+        var client = HttpContext.Items["Client"] as Tenant;
+        if (client == null) return Unauthorized();
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == client.Id);
+        if (user == null) return NotFound(new { error = "User not found" });
+
+        if (user.Role != "PendingApproval") return BadRequest(new { error = "User is not pending approval" });
+
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "User request rejected and deleted" });
     }
 
     [HttpPost("2fa/recovery-codes/regenerate")]
     public async Task<IActionResult> RegenerateRecoveryCodes()
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from modifying security configurations.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -796,27 +1084,25 @@ public class AccountController : ControllerBase
         return NoContent();
     }
 
+    private async Task WriteAuditLogAsync(Guid tenantId, string action, string metadata)
+    {
+        var log = new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            Action = action,
+            Metadata = metadata,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.AuditLogs.Add(log);
+        await _context.SaveChangesAsync();
+    }
+
     [HttpGet("audit-logs")]
     public async Task<IActionResult> GetAuditLogs()
     {
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
-
-        // Seed some initial audit logs if empty
-        var hasLogs = await _context.AuditLogs.AnyAsync(a => a.TenantId == client.Id);
-        if (!hasLogs)
-        {
-            var logs = new List<AuditLog>
-            {
-                new AuditLog { TenantId = client.Id, Action = "User login successful", Metadata = "{\"ip\":\"192.168.1.44\",\"device\":\"Chrome on macOS\"}", CreatedAt = DateTime.UtcNow.AddMinutes(-5) },
-                new AuditLog { TenantId = client.Id, Action = "API Key Created", Metadata = "{\"keyId\":\"key_001\",\"scopes\":[\"render:pdf\"]}", CreatedAt = DateTime.UtcNow.AddHours(-2) },
-                new AuditLog { TenantId = client.Id, Action = "Webhook Endpoint Added", Metadata = "{\"url\":\"https://example.com/webhooks\"}", CreatedAt = DateTime.UtcNow.AddDays(-1) },
-                new AuditLog { TenantId = client.Id, Action = "Two-Factor Authentication Setup Initiated", Metadata = "{}", CreatedAt = DateTime.UtcNow.AddDays(-2) },
-                new AuditLog { TenantId = client.Id, Action = "Billing cycle updated to Developer Pro", Metadata = "{\"amount\":79.00}", CreatedAt = DateTime.UtcNow.AddDays(-12) }
-            };
-            _context.AuditLogs.AddRange(logs);
-            await _context.SaveChangesAsync();
-        }
 
         var list = await _context.AuditLogs
             .Where(a => a.TenantId == client.Id)
@@ -830,6 +1116,65 @@ public class AccountController : ControllerBase
             .ToListAsync();
 
         return Ok(list);
+    }
+
+    [HttpGet("audit-logs/export")]
+    public async Task<IActionResult> ExportAuditLogs()
+    {
+        var client = HttpContext.Items["Client"] as Tenant;
+        if (client == null) return Unauthorized();
+
+        var logs = await _context.AuditLogs
+            .Where(a => a.TenantId == client.Id)
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync();
+
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("ID,Action,Metadata,Timestamp");
+
+        foreach (var log in logs)
+        {
+            var metadataSafe = log.Metadata?.Replace("\"", "\"\"") ?? "";
+            builder.AppendLine($"{log.Id},\"{log.Action}\",\"{metadataSafe}\",\"{log.CreatedAt:yyyy-MM-dd HH:mm:ss}\"");
+        }
+
+        var csvBytes = System.Text.Encoding.UTF8.GetBytes(builder.ToString());
+        return File(csvBytes, "text/csv", $"AuditLogs_{client.Name.Replace(" ", "_")}_{DateTime.UtcNow:yyyyMMdd}.csv");
+    }
+
+    [HttpGet("search")]
+    public async Task<IActionResult> UnifiedSearch([FromQuery] string q)
+    {
+        var client = HttpContext.Items["Client"] as Tenant;
+        if (client == null) return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(q))
+        {
+            return Ok(new { jobs = Array.Empty<object>(), templates = Array.Empty<object>(), keys = Array.Empty<object>() });
+        }
+
+        q = q.ToLower().Trim();
+
+        var jobs = await _context.PdfJobs
+            .Where(j => j.TenantId == client.Id && (j.JobId.Contains(q) || j.DocumentName.ToLower().Contains(q) || (j.ErrorMessage != null && j.ErrorMessage.ToLower().Contains(q))))
+            .Take(5)
+            .Select(j => new { id = j.JobId, title = j.DocumentName, type = "Job", status = j.Status.ToString(), path = "/dashboard/usage" })
+            .ToListAsync();
+
+        var templates = await _context.SavedTemplates
+            .Where(t => t.TenantId == client.Id && t.DeletedAt == null && (t.Name.ToLower().Contains(q) || t.HtmlContent.ToLower().Contains(q)))
+            .Take(5)
+            .Select(t => new { id = t.Id.ToString(), title = t.Name, type = "Template", status = "Active", path = "/dashboard/templates" })
+            .ToListAsync();
+
+        var keys = await _context.ApiKeys
+            .Where(k => k.TenantId == client.Id && !k.IsRevoked && (k.KeyPrefix.Contains(q) || k.Environment.ToLower().Contains(q)))
+            .Take(5)
+            .Select(k => new { id = k.Id.ToString(), title = k.Environment + " Key (" + k.KeyPrefix + ")", type = "API Key", status = k.IsRevoked ? "Revoked" : "Active", path = "/dashboard/keys" })
+            .ToListAsync();
+
+        var results = jobs.Cast<object>().Concat(templates).Concat(keys).ToList();
+        return Ok(results);
     }
 
     private string ComputeSha256(string input)

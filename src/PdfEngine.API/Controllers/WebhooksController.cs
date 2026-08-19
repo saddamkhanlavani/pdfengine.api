@@ -36,6 +36,8 @@ public class WebhooksController : ControllerBase
     }
 
     [HttpPost("stripe")]
+    [HttpPost("/api/billing/webhook")]
+    [HttpPost("/api/v1/billing/webhook")]
     public async Task<IActionResult> HandleStripeWebhook()
     {
         var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
@@ -133,7 +135,7 @@ public class WebhooksController : ControllerBase
         _dbContext.WebhookEndpoints.Add(endpoint);
         await _dbContext.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(ListEndpoints), new { id = endpoint.Id }, endpoint);
+        return Ok(endpoint);
     }
 
     [HttpDelete("{id}")]

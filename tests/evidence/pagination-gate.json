@@ -1,0 +1,30 @@
+{
+  "C1 grid-nested heading does not split the grid or strand a blank page": {
+    "verdict": "PASS",
+    "detail": "pages=1 blanks=[] both_cards_together=True"
+  },
+  "C2 native page-break-after does not desync tracking or create blank pages": {
+    "verdict": "PASS",
+    "detail": "pages=2 (want <=3) blanks=[]"
+  },
+  "C3 ToC page references match the REAL page each target lands on": {
+    "verdict": "PASS",
+    "detail": "resolved=4/4 mismatches=[]"
+  },
+  "C4 keep-together block is never split across a page boundary": {
+    "verdict": "PASS",
+    "detail": "block spans pages=[1] (want exactly one)"
+  },
+  "C5 heading is not stranded alone at the bottom of a page": {
+    "verdict": "PASS",
+    "detail": "heading on page 1 with 36 following line(s) (want >=2)"
+  },
+  "D1 whitespace is reported WITH an attributed cause": {
+    "verdict": "PASS",
+    "detail": "2 notice(s), 2 with attributed cause"
+  },
+  "D2 no unexplained blank pages in a mixed real-world document": {
+    "verdict": "PASS",
+    "detail": "pages=6 blanks=[]"
+  }
+}

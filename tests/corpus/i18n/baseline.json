@@ -1,0 +1,21 @@
+{
+  "latin": "PASS",
+  "latin-accented": "SPACING",
+  "cyrillic": "PASS",
+  "greek": "PASS",
+  "devanagari": "SPACING",
+  "bengali": "PASS",
+  "tamil": "PASS",
+  "thai": "PASS",
+  "japanese": "SPACING",
+  "chinese": "PASS",
+  "korean": "PASS",
+  "hebrew": "SPACING",
+  "arabic": "PASS",
+  "arabic-simple": "PASS",
+  "mixed-rtl-ltr": "PARTIAL",
+  "arabic-ligature-heavy": "PASS",
+  "latin-fi-ligature": "PASS",
+  "persian": "PASS",
+  "urdu": "PASS"
+}

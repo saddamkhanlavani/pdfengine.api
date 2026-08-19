@@ -20,30 +20,80 @@ public class RedisPdfJobQueue : IPdfJobQueue
 
     public async ValueTask EnqueueAsync(PdfJob job, CancellationToken cancellationToken = default)
     {
-        var db = _redis.GetDatabase();
-        var json = JsonSerializer.Serialize(job);
-        
-        // Push to the left side of the list
-        await db.ListLeftPushAsync(QueueKey, json);
+        var backoffMs = 1000;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var db = _redis.GetDatabase();
+                var json = JsonSerializer.Serialize(job);
+                await db.ListLeftPushAsync(QueueKey, json);
+                return;
+            }
+            catch (RedisException)
+            {
+                backoffMs = Math.Min(10000, backoffMs * 2);
+                await Task.Delay(backoffMs, cancellationToken);
+            }
+        }
+    }
+
+    public async ValueTask EnqueueDeadLetterAsync(PdfJob job)
+    {
+        try
+        {
+            var db = _redis.GetDatabase();
+            var json = JsonSerializer.Serialize(job);
+            await db.ListLeftPushAsync("pdf_jobs_queue:dlq", json);
+        }
+        catch
+        {
+            // Suppress exception on DLQ save to keep client unblocked
+        }
     }
 
     public async ValueTask<PdfJob> DequeueAsync(CancellationToken cancellationToken = default)
     {
-        var db = _redis.GetDatabase();
+        var backoffMs = 1000;
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            // Pop from the right side of the list
-            var result = await db.ListRightPopAsync(QueueKey);
-            
-            if (result.HasValue)
+            try
             {
-                return JsonSerializer.Deserialize<PdfJob>(result.ToString())!;
-            }
+                var db = _redis.GetDatabase();
+                var result = await db.ListRightPopAsync(QueueKey);
+                
+                if (result.HasValue)
+                {
+                    var json = result.ToString();
+                    try
+                    {
+                        var job = JsonSerializer.Deserialize<PdfJob>(json);
+                        if (job != null)
+                        {
+                            return job;
+                        }
+                    }
+                    catch
+                    {
+                        // Deserialization fails -> Poison message! Send directly to DLQ
+                        try
+                        {
+                            await db.ListLeftPushAsync("pdf_jobs_queue:dlq", json);
+                        }
+                        catch {}
+                        continue;
+                    }
+                }
 
-            // Simple delay-based polling to prevent high CPU usage when queue is empty.
-            // In a more complex setup, you could use Redis Streams (XREAD BLOCK) for instant push.
-            await Task.Delay(100, cancellationToken);
+                backoffMs = 1000; // reset backoff on successful loop
+                await Task.Delay(100, cancellationToken);
+            }
+            catch (RedisException)
+            {
+                backoffMs = Math.Min(10000, backoffMs * 2);
+                await Task.Delay(backoffMs, cancellationToken);
+            }
         }
 
         throw new OperationCanceledException(cancellationToken);

@@ -10,6 +10,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.3" />
+    <PackageReference Include="Scriban" Version="7.2.6" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -17,5 +18,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <!-- Matches PdfEngine.Infrastructure. Lets the nesting-depth guard be tested at the
+       boundary values that matter without widening its public API surface. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="PdfEngine.UnitTests" />
+  </ItemGroup>
 
 </Project>

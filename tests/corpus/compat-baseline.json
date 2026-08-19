@@ -1,0 +1,13 @@
+{
+  "A1 Grid, Flexbox and CSS variables all lay out correctly": "PASS",
+  "A2 pseudo-elements and generated content appear in output": "PASS",
+  "A3 transforms, shadows and gradients render as ink": "PASS",
+  "A4 print CSS and @page rules are honored": "PASS",
+  "A5 a missing image is REPORTED, not silently dropped": "PASS",
+  "A6 content overflowing the page is diagnosed": "PASS",
+  "A7 an off-page absolutely positioned element is diagnosed": "PASS",
+  "B1a webfont is actually embedded, not silently substituted": "PASS",
+  "B1b no tofu: every glyph in a multi-script line has real coverage": "PASS",
+  "B1c font fallback chain resolves when the first family is unavailable": "PASS",
+  "B1d bold and italic are distinct faces, not synthesized-away": "PASS"
+}

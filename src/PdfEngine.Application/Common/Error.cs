@@ -20,6 +20,8 @@ public struct Error
     public static Error Internal(string message) => new(ErrorCodes.Internal, message);
     public static Error RequestAborted(string message) => new(ErrorCodes.RequestAborted, message);
     public static Error NotFound(string message) => new(ErrorCodes.NotFound, message);
+    public static Error QuotaExceededError(string message) => new(ErrorCodes.QuotaExceeded, message);
+    public static Error BlockedUrl(string message) => new(ErrorCodes.BlockedUrl, message);
 }
 
 public static class ErrorCodes
@@ -31,4 +33,6 @@ public static class ErrorCodes
     public const string Internal = "INTERNAL_ERROR";
     public const string RequestAborted = "REQUEST_ABORTED";
     public const string NotFound = "NOT_FOUND";
+    public const string QuotaExceeded = "QUOTA_EXCEEDED";
+    public const string BlockedUrl = "BLOCKED_URL";
 }

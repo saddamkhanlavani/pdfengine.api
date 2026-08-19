@@ -1,0 +1,158 @@
+{
+  "_comment": "Permanent i18n text-layer fixtures. Each entry is rendered to PDF and its extracted text is diffed against `source`. A script may only be claimed as supported once its text-layer verdict is PASS. Visual rendering is a SEPARATE gate (Gate B1) and never substitutes for this one.",
+  "_oracle": "poppler pdftotext. Do NOT switch to PyMuPDF - it misreports Devanagari conjuncts and produces false failures.",
+  "fixtures": [
+    {
+      "id": "latin",
+      "label": "Latin (English)",
+      "font": "Outfit",
+      "googleFont": "Outfit:wght@400",
+      "dir": "ltr",
+      "source": "The quick brown fox jumps over the lazy dog 0123456789."
+    },
+    {
+      "id": "latin-accented",
+      "label": "Latin (accented / Vietnamese)",
+      "font": "Noto Sans",
+      "googleFont": "Noto+Sans:wght@400",
+      "dir": "ltr",
+      "source": "Tiếng Việt: Cộng hòa Xã hội Chủ nghĩa Việt Nam."
+    },
+    {
+      "id": "cyrillic",
+      "label": "Cyrillic (Russian)",
+      "font": "Noto Sans",
+      "googleFont": "Noto+Sans:wght@400",
+      "dir": "ltr",
+      "source": "Съешь же ещё этих мягких французских булок."
+    },
+    {
+      "id": "greek",
+      "label": "Greek",
+      "font": "Noto Sans",
+      "googleFont": "Noto+Sans:wght@400",
+      "dir": "ltr",
+      "source": "Ξεσκεπάζω την ψυχοφθόρα βδελυγμία."
+    },
+    {
+      "id": "devanagari",
+      "label": "Devanagari (Hindi)",
+      "font": "Noto Sans Devanagari",
+      "googleFont": "Noto+Sans+Devanagari",
+      "dir": "ltr",
+      "source": "पीडीएफइंजन यूनिकोड फॉन्ट का पूरी तरह समर्थन करता है और जटिल संयुक्ताक्षरों को सही ढंग से प्रस्तुत करता है।"
+    },
+    {
+      "id": "bengali",
+      "label": "Bengali",
+      "font": "Noto Sans Bengali",
+      "googleFont": "Noto+Sans+Bengali",
+      "dir": "ltr",
+      "source": "আমি বাংলায় গান গাই, আমি বাংলার গান গাই।"
+    },
+    {
+      "id": "tamil",
+      "label": "Tamil",
+      "font": "Noto Sans Tamil",
+      "googleFont": "Noto+Sans+Tamil",
+      "dir": "ltr",
+      "source": "தமிழ் மொழி உலகின் தொன்மையான மொழிகளில் ஒன்றாகும்."
+    },
+    {
+      "id": "thai",
+      "label": "Thai",
+      "font": "Noto Sans Thai",
+      "googleFont": "Noto+Sans+Thai",
+      "dir": "ltr",
+      "source": "เป็นมนุษย์สุดประเสริฐเลิศคุณค่า กว่าบรรดาฝูงสัตว์เดรัจฉาน"
+    },
+    {
+      "id": "japanese",
+      "label": "Japanese (CJK)",
+      "font": "Noto Sans JP",
+      "googleFont": "Noto+Sans+JP",
+      "dir": "ltr",
+      "source": "PDFEngineは日本語を含む多言語フォントのレンダリングに完全対応しています。"
+    },
+    {
+      "id": "chinese",
+      "label": "Chinese Simplified",
+      "font": "Noto Sans SC",
+      "googleFont": "Noto+Sans+SC",
+      "dir": "ltr",
+      "source": "中文渲染测试：多语言字体嵌入与文本提取验证。"
+    },
+    {
+      "id": "korean",
+      "label": "Korean (Hangul)",
+      "font": "Noto Sans KR",
+      "googleFont": "Noto+Sans+KR",
+      "dir": "ltr",
+      "source": "다국어 한글 렌더링 지원으로 레이아웃이 항상 정밀하게 출력됩니다."
+    },
+    {
+      "id": "hebrew",
+      "label": "Hebrew (RTL)",
+      "font": "Noto Sans Hebrew",
+      "googleFont": "Noto+Sans+Hebrew",
+      "dir": "rtl",
+      "source": "מנוע PDFEngine תומך באופן מלא בכיווניות מימין לשמאל."
+    },
+    {
+      "id": "arabic",
+      "label": "Arabic (RTL)",
+      "font": "Noto Sans Arabic",
+      "googleFont": "Noto+Sans+Arabic",
+      "dir": "rtl",
+      "source": "يقوم محرك PDFEngine بمعالجة النصوص العربية ذات الاتجاه المعاكس بشكل صحيح."
+    },
+    {
+      "id": "arabic-simple",
+      "label": "Arabic without lam-alef ligature",
+      "font": "Noto Sans Arabic",
+      "googleFont": "Noto+Sans+Arabic",
+      "dir": "rtl",
+      "source": "مرحبا بكم في محرك تحويل صفحات الويب."
+    },
+    {
+      "id": "mixed-rtl-ltr",
+      "label": "Mixed RTL + LTR in one sentence",
+      "font": "Noto Sans Arabic",
+      "googleFont": "Noto+Sans+Arabic",
+      "dir": "rtl",
+      "source": "رقم الطلب SKU-4821 بتاريخ 2026-08-16."
+    },
+    {
+      "id": "arabic-ligature-heavy",
+      "label": "Arabic ligature-heavy (lam-alef x4)",
+      "font": "Noto Sans Arabic",
+      "googleFont": "Noto+Sans+Arabic",
+      "dir": "rtl",
+      "source": "الاتجاه الاول الاخير الاعلى"
+    },
+    {
+      "id": "latin-fi-ligature",
+      "label": "Latin fi/fl ligature (regression: ToC bug)",
+      "font": "Outfit",
+      "googleFont": "Outfit:wght@400",
+      "dir": "ltr",
+      "source": "financials office flow affluent difficult final"
+    },
+    {
+      "id": "persian",
+      "label": "Persian (Farsi)",
+      "font": "Noto Sans Arabic",
+      "googleFont": "Noto+Sans+Arabic",
+      "dir": "rtl",
+      "source": "موتور تبدیل صفحات وب به پی دی اف"
+    },
+    {
+      "id": "urdu",
+      "label": "Urdu",
+      "font": "Noto Sans Arabic",
+      "googleFont": "Noto+Sans+Arabic",
+      "dir": "rtl",
+      "source": "پی ڈی ایف انجن اردو متن کو درست طریقے سے پیش کرتا ہے"
+    }
+  ]
+}

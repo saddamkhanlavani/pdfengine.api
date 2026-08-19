@@ -17,9 +17,20 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<PdfEngineOptions>(configuration.GetSection(PdfEngineOptions.SectionName));
+
+        // Everything the engine draws into a PDF itself — footnote bands, running headers,
+        // watermarks — goes through PdfSharpCore, which needs a font resolver to have any
+        // idea what a family or a weight means. Without this it was measured to return one
+        // identical face for every family AND every style, so `font-family` in a margin box
+        // did nothing and emphasis in a footnote rendered upright. Registered here because
+        // it is process-wide state that must be in place before the first render.
+        EngineFontResolver.Register();
+
         
         services.AddHttpContextAccessor();
         services.AddScoped<ITenantProvider, HttpContextTenantProvider>();
+        services.AddScoped<IEnvironmentProvider, HttpContextEnvironmentProvider>();
+        services.AddScoped<IClientContextProvider, HttpClientContextProvider>();
 
         // Database
         services.AddDbContext<PdfEngine.Infrastructure.Data.PdfEngineDbContext>(options =>
@@ -30,16 +41,46 @@ public static class DependencyInjection
         services.AddScoped<IApiKeyStore, EfApiKeyStore>();
         services.AddSingleton<IRateLimiter, InMemoryRateLimiter>();
         
+        // Email Configuration & Providers
+        services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
+        services.AddTransient<LogEmailProvider>();
+        services.AddTransient<SmtpEmailProvider>();
+        services.AddTransient<SendGridEmailProvider>();
+        services.AddTransient<PostmarkEmailProvider>();
+
+        services.AddTransient<IEmailProvider>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<EmailOptions>>().Value;
+            return options.Provider.ToUpperInvariant() switch
+            {
+                "SMTP" => sp.GetRequiredService<SmtpEmailProvider>(),
+                "SENDGRID" => sp.GetRequiredService<SendGridEmailProvider>(),
+                "POSTMARK" => sp.GetRequiredService<PostmarkEmailProvider>(),
+                _ => sp.GetRequiredService<LogEmailProvider>()
+            };
+        });
+        services.AddScoped<IEmailService, EmailService>();
+        
         // Business Services
         services.AddSingleton<IEncryptionService, EncryptionService>();
         services.AddSingleton<IWebhookService, WebhookService>();
         services.AddScoped<IUsageService, UsageService>();
         services.AddScoped<IBillingService, PdfEngine.Infrastructure.Services.BillingService>();
         services.AddScoped<IApiKeyService, ApiKeyService>();
+        services.AddScoped<ITenantEntitlementService, TenantEntitlementService>();
         services.AddHostedService<BillingWorker>();
+        services.AddHostedService<PdfRenderWorker>();
+        services.AddHostedService<MetricsWorker>();
 
         // Stripe Configuration
         StripeConfiguration.ApiKey = configuration["Stripe:SecretKey"];
+
+        services.AddScoped<IHtmlSanitizerStage, HtmlSanitizerStage>();
+        services.AddScoped<IAssetOptimizerStage, AssetOptimizerStage>();
+        services.AddScoped<IDomAnalyzer, DomAnalyzer>();
+        services.AddScoped<ILayoutAnalyzer, LayoutAnalyzer>();
+        services.AddScoped<ITypographyEngine, TypographyEngine>();
+        services.AddScoped<IPaginationPlanner, PaginationPlanner>();
 
         // Register the concrete PlaywrightPdfService
         services.AddScoped<IPdfService, PlaywrightPdfService>();

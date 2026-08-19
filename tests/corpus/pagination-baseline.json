@@ -1,0 +1,9 @@
+{
+  "C1 grid-nested heading does not split the grid or strand a blank page": "PASS",
+  "C2 native page-break-after does not desync tracking or create blank pages": "PASS",
+  "C3 ToC page references match the REAL page each target lands on": "PASS",
+  "C4 keep-together block is never split across a page boundary": "PASS",
+  "C5 heading is not stranded alone at the bottom of a page": "PASS",
+  "D1 whitespace is reported WITH an attributed cause": "PASS",
+  "D2 no unexplained blank pages in a mixed real-world document": "PASS"
+}

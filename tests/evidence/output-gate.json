@@ -1,0 +1,130 @@
+{
+  "T2-1a an embedded file appears in the attachment pane and extracts byte-identical": {
+    "verdict": "PASS",
+    "detail": "listed=['factur-x.xml']; extracted matches original=True"
+  },
+  "T2-1b a Factur-X carrier is genuinely PDF/A-3b conformant": {
+    "verdict": "PASS",
+    "detail": "PDF/A-3b compliant=True, attachment present=['factur-x.xml']"
+  },
+  "T2-1c the MIME type survives as a real MIME type": {
+    "verdict": "PASS",
+    "detail": "correctly escaped=True, double-escaped=False"
+  },
+  "T2-1d attachments plus PDF/A-2b are REFUSED, not silently wrong": {
+    "verdict": "PASS",
+    "detail": "refused=True; HTTP 400: {\"code\":\"VALIDATION_ERROR\",\"message\":\"Attachments require PDF/A-3b when a PDF/A "
+  },
+  "T2-1e several attachments with different relationships all survive": {
+    "verdict": "PASS",
+    "detail": "listed=['invoice.xml', 'notes.txt', 'terms.txt']; relationships present=['/Data', '/Supplement', '/Unspecified']"
+  },
+  "T2-1f a document with no attachments is untouched": {
+    "verdict": "PASS",
+    "detail": "attachments=[]; no /EmbeddedFile in file=True"
+  },
+  "T2-4a extract takes a page selection, in the order it was written": {
+    "verdict": "PASS",
+    "detail": "selection=['SRCPAGE1', 'SRCPAGE2', 'SRCPAGE5']; reordering=['SRCPAGE3', 'SRCPAGE1']"
+  },
+  "T2-4b rotate turns the page and is additive, not absolute": {
+    "verdict": "PASS",
+    "detail": "one 90deg turn -> /Rotate 90; a second -> /Rotate 180 (want 90 then 180)"
+  },
+  "T2-4c N-up places the requested number of pages per sheet, text intact": {
+    "verdict": "PASS",
+    "detail": "2-up=['SRCPAGE1 SRCPAGE2', 'SRCPAGE3 SRCPAGE4', 'SRCPAGE5 SRCPAGE6']; 4-up sheets=2, first=SRCPAGE1 SRCPAGE2 SRCPAGE3 SRCPAGE4"
+  },
+  "T2-4d flatten removes interactivity WITHOUT rasterising the page": {
+    "verdict": "PASS",
+    "detail": "text preserved=['SRCPAGE1', 'SRCPAGE2', 'SRCPAGE3']; /Annots removed=True; /AcroForm removed=True"
+  },
+  "T2-4e malformed transform requests are refused, never 500": {
+    "verdict": "PASS",
+    "detail": "all refused with 400=True; []"
+  },
+  "T2-2a a signed document carries a signature openssl accepts": {
+    "verdict": "PASS",
+    "detail": "openssl verified=True ['CMS Verification successful']; SubFilter=[b'adbe.pkcs7.detached']"
+  },
+  "T2-2b the signature covers the whole document \u2014 tampering breaks it": {
+    "verdict": "PASS",
+    "detail": "intact document verifies=True; tampered document verifies=False (must be False)"
+  },
+  "T2-2c signing metadata reaches the signature dictionary": {
+    "verdict": "PASS",
+    "detail": "in the signature dictionary: ['REASONMARKER', 'LOCATIONMARKER']; still verifies=True"
+  },
+  "T2-2g a timestamped signature is PAdES B-T, not just a basic signature": {
+    "verdict": "PASS",
+    "detail": "signature verifies=True; RFC 3161 timestamp token embedded=True"
+  },
+  "T2-2h an unreachable timestamp authority FAILS rather than dropping the timestamp": {
+    "verdict": "PASS",
+    "detail": "refused=True: HTTP 400: {\"code\":\"VALIDATION_ERROR\",\"message\":\"Digital signing failed: The timestamp authority at h"
+  },
+  "T2-2d signing and encryption are refused together, not silently broken": {
+    "verdict": "PASS",
+    "detail": "refused=True: HTTP 400: {\"code\":\"VALIDATION_ERROR\",\"message\":\"Signing and encryption cannot be requested together "
+  },
+  "T2-2e a bad certificate fails clearly, never with a 500": {
+    "verdict": "PASS",
+    "detail": "all refused with 400=True; []"
+  },
+  "T2-2f an unsigned document carries no signature dictionary": {
+    "verdict": "PASS",
+    "detail": "no /ByteRange and no /SubFilter in an unsigned document"
+  },
+  "T2-5a linearize produces a genuinely fast-web-view document": {
+    "verdict": "PASS",
+    "detail": "default linearized=False (want False); requested linearized=True (want True)"
+  },
+  "T2-5b an encrypted document can still be linearized, and stays encrypted": {
+    "verdict": "PASS",
+    "detail": "linearized=True; encryption still AES-256=True"
+  },
+  "T2-5c linearize plus signing is refused rather than silently dropped": {
+    "verdict": "PASS",
+    "detail": "refused=True: HTTP 400: {\"code\":\"VALIDATION_ERROR\",\"message\":\"Linearization and signing cannot be requested togeth"
+  },
+  "T2-6a bleed enlarges the sheet and records the finished size as the TrimBox": {
+    "verdict": "PASS",
+    "detail": "{'media': (216.2, 303.0), 'trim': (210.0, 297.0), 'bleed': (216.2, 303.0)} (want trim ~210x297, bleed ~216x303)"
+  },
+  "T2-6b artwork actually extends into the bleed, rather than being framed in white": {
+    "verdict": "PASS",
+    "detail": "pixel inside the bleed = rgb(51,84,186); inked=True"
+  },
+  "T2-6c crop marks add sheet OUTSIDE the bleed and are drawn there": {
+    "verdict": "PASS",
+    "detail": "{'media': (232.2, 319.0), 'trim': (210.0, 297.0), 'bleed': (216.2, 303.0)} (media must exceed bleed, bleed must exceed trim)"
+  },
+  "T2-6d a document without bleed keeps a single page box": {
+    "verdict": "PASS",
+    "detail": "{'media': (210.2, 297.3), 'trim': (210.2, 297.3), 'bleed': (210.2, 297.3)} (all three boxes must be the same)"
+  },
+  "T2-6e the engine does NOT claim CMYK or PDF/X": {
+    "verdict": "PASS",
+    "detail": "colour limitation stated at render time: True"
+  },
+  "T2-3a fillable text and checkbox fields are real fields a reader can see": {
+    "verdict": "PASS",
+    "detail": "is_form=True; fields=['full_name', 'email', 'agree']; types=['CheckBox', 'Text']"
+  },
+  "T2-3b field values and coordinates survive the top-left to PDF conversion": {
+    "verdict": "PASS",
+    "detail": "email value='a@b.invalid'; checkbox='Yes'; declared order preserved top-to-bottom=True"
+  },
+  "T2-3c form fields and PDF/A are refused together": {
+    "verdict": "PASS",
+    "detail": "refused=True: HTTP 400: {\"code\":\"VALIDATION_ERROR\",\"message\":\"Interactive form fields and PDF/A cannot be req"
+  },
+  "T2-3d malformed field declarations are refused, never 500": {
+    "verdict": "PASS",
+    "detail": "all refused with 400=True; []"
+  },
+  "T2-3e a document with no fields is not a form": {
+    "verdict": "PASS",
+    "detail": "is_form=False; widgets=0"
+  }
+}

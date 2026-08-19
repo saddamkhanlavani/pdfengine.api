@@ -8,4 +8,5 @@ public interface IPdfJobQueue
 {
     ValueTask EnqueueAsync(PdfJob job, CancellationToken cancellationToken = default);
     ValueTask<PdfJob> DequeueAsync(CancellationToken cancellationToken = default);
+    ValueTask EnqueueDeadLetterAsync(PdfJob job);
 }

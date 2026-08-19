@@ -12,6 +12,7 @@ public class UsageRecord
     public ApiKey? ApiKey { get; set; }
     
     public string RequestId { get; set; } = string.Empty;
+    public string DocumentName { get; set; } = "document.pdf";
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     
     public bool Success { get; set; }
@@ -35,4 +36,13 @@ public class UsageRecord
     public string SourceType { get; set; } = "API"; // API, Playground, SDK, etc.
     public string? SdkLanguage { get; set; }
     public string? SdkVersion { get; set; }
+
+    // Observability & Request Details
+    public string? ClientIp { get; set; }
+    public string? UserAgent { get; set; }
+    public string? AuthMechanism { get; set; }
+    public bool IsWatermarked { get; set; }
+    public string? SandboxEnvironment { get; set; }
+    public string? FileUrl { get; set; }
 }
+

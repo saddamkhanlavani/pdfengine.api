@@ -1,0 +1,19 @@
+{
+  "health endpoint is public and reports healthy": "PASS",
+  "render WITHOUT api key is rejected": "PASS",
+  "render with INVALID api key is rejected": "PASS",
+  "render with VALID api key returns a real PDF": "PASS",
+  "malformed body is rejected with 4xx, not 500": "PASS",
+  "neither html nor url is rejected with a clear message": "PASS",
+  "SSRF: cloud metadata endpoint is blocked with BLOCKED_URL 400": "PASS",
+  "batch size cap is enforced (51 rejected)": "PASS",
+  "batch boundary accepted (50 queued)": "PASS",
+  "job status for an unknown id is not a 500": "PASS",
+  "job download without api key is rejected": "PASS",
+  "merge endpoint validates input (<2 files rejected)": "PASS",
+  "PDF/A + encryption combination is rejected (spec conflict)": "PASS",
+  "tenant B has its own working credentials": "PASS",
+  "TENANT ISOLATION: tenant B cannot read tenant A's job": "PASS",
+  "TENANT ISOLATION: tenant B cannot download tenant A's job": "PASS",
+  "tenant A CAN read its own job (isolation is not just blanket denial)": "PASS"
+}

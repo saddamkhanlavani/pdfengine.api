@@ -1,0 +1,103 @@
+name: Release Gates
+
+# Runs the SAME entry point developers run locally (tests/run-gates.sh) so CI and
+# local behaviour cannot drift apart.
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+  workflow_dispatch:
+  # Nightly. Gate J pins layout against a specific Chromium build, so a scheduled run
+  # is what surfaces upstream drift on its own rather than blaming the next unrelated
+  # pull request for it. The performance gate also runs only on this schedule.
+  schedule:
+    - cron: '0 3 * * *'
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: pdfuser
+          POSTGRES_PASSWORD: pdfpassword
+          POSTGRES_DB: pdfengine
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '8.0.x' }
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+
+      - name: Install poppler (text-extraction oracle) and qpdf
+        # qpdf is required by the navigation gate to inspect compressed PDF
+        # structures (outline entries, link annotations, the structure tree).
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils qpdf
+
+      - name: Install PyMuPDF (rasterisation for the figures/compat gates)
+        # Used ONLY to rasterise pixels and list embedded fonts. It is deliberately
+        # NOT the text-extraction oracle — it misreports Devanagari conjuncts and
+        # would produce false failures. poppler remains the oracle.
+        run: python3 -m pip install --quiet pymupdf
+
+      - name: Install veraPDF (PDF/A + PDF/UA validator)
+        run: |
+          curl -sL https://software.verapdf.org/releases/verapdf-installer.zip -o v.zip
+          unzip -q v.zip -d verapdf-dl
+          DIR=$(find verapdf-dl -maxdepth 1 -type d -name 'verapdf-*' | head -1)
+          echo "INSTALL_PATH=$PWD/verapdf" > auto.xml.properties
+          java -jar "$DIR"/verapdf-izpack-installer-*.jar -options auto.xml.properties
+          echo "VERAPDF_BIN=$PWD/verapdf/verapdf" >> $GITHUB_ENV
+
+      - name: Build
+        run: dotnet build --nologo
+
+      - name: Install Playwright browsers
+        run: |
+          dotnet tool install --global Microsoft.Playwright.CLI || true
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          playwright install --with-deps chromium
+
+      - name: Start API
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+        run: |
+          nohup dotnet run --project src/PdfEngine.API/PdfEngine.API.csproj \
+            --urls http://localhost:5276 > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:5276/health && { echo "API up"; exit 0; }
+            sleep 2
+          done
+          echo "API failed to start"; tail -50 /tmp/api.log; exit 1
+
+      - name: Run release gates
+        # Gate K (performance) is opt-in: its thresholds are machine-relative and a
+        # shared CI runner would make it flaky. It runs on schedule, not per-push.
+        run: ./tests/run-gates.sh
+
+      - name: Run performance gate (scheduled runs only)
+        if: github.event_name == 'schedule'
+        env:
+          RUN_PERF_GATE: '1'
+          PERF_SOAK: '200'
+        run: ./tests/run-gates.sh
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-evidence
+          path: tests/evidence/

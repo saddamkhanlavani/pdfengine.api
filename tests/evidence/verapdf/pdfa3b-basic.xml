@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<report>
+  <buildInformation>
+    <releaseDetails id="core" version="1.30.2" buildDate="2026-06-03T10:43:00+05:30"></releaseDetails>
+    <releaseDetails id="validation-model" version="1.30.2" buildDate="2026-06-03T10:46:00+05:30"></releaseDetails>
+    <releaseDetails id="apps" version="1.30.2" buildDate="2026-06-03T10:55:00+05:30"></releaseDetails>
+  </buildInformation>
+  <jobs>
+    <job>
+      <item size="39745">
+        <name>/var/folders/8t/zzdh0lyx5r9fxy23jby9yh4w0000gn/T/tmpo7axkjiy/d.pdf</name>
+      </item>
+      <validationReport jobEndStatus="normal" profileName="PDF/A-3b validation profile" statement="PDF file is compliant with Validation Profile requirements." isCompliant="true">
+        <details passedRules="146" failedRules="0" passedChecks="1195" failedChecks="0"></details>
+      </validationReport>
+      <duration start="1787161395047" finish="1787161395293">00:00:00.246</duration>
+    </job>
+  </jobs>
+  <batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0">
+    <validationReports compliant="1" nonCompliant="0" failedJobs="0">1</validationReports>
+    <featureReports failedJobs="0">0</featureReports>
+    <repairReports failedJobs="0">0</repairReports>
+    <duration start="1787161395021" finish="1787161395305">00:00:00.284</duration>
+  </batchSummary>
+</report>

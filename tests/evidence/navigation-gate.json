@@ -1,0 +1,30 @@
+{
+  "G1 outline is generated from headings with correct nesting": {
+    "verdict": "PASS",
+    "detail": "/Outlines=True titles found=4/4 missing=[]"
+  },
+  "G2 page cross-references match the REAL page, not a simulated counter": {
+    "verdict": "PASS",
+    "detail": "resolved=4/4 mismatches=[]"
+  },
+  "G3 internal anchor links produce real PDF link annotations": {
+    "verdict": "PASS",
+    "detail": "link annotation=True destination=True"
+  },
+  "G4 external links are preserved with their URI intact": {
+    "verdict": "PASS",
+    "detail": "URI preserved=True /URI action=True"
+  },
+  "G5 document metadata and language reach the PDF catalog": {
+    "verdict": "PASS",
+    "detail": "missing metadata=[] /Lang present=True"
+  },
+  "G6 tagged output carries a real structure tree": {
+    "verdict": "PASS",
+    "detail": "/StructTreeRoot=True /MarkInfo=True heading /H1=True table /Table=True"
+  },
+  "G7 unresolvable cross-reference is reported, not silently blank": {
+    "verdict": "PASS",
+    "detail": "diagnostic warning=True visible unresolved marker=True"
+  }
+}

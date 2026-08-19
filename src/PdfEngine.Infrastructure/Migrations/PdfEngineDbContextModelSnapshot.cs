@@ -74,11 +74,50 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.HasIndex("KeyHash")
                         .IsUnique();
 
-                    b.HasIndex("TenantId");
-
                     b.HasIndex("TenantId1");
 
+                    b.HasIndex("TenantId", "Environment")
+                        .HasDatabaseName("IX_ApiKey_Tenant_Environment");
+
                     b.ToTable("ApiKeys");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.Asset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StorageUrl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("Assets");
                 });
 
             modelBuilder.Entity("PdfEngine.Domain.Entities.AuditLog", b =>
@@ -105,6 +144,36 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.HasIndex("TenantId");
 
                     b.ToTable("AuditLogs");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.BrowserWorkerMetrics", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ActivePages")
+                        .HasColumnType("integer");
+
+                    b.Property<double>("CpuUsagePercent")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("MemoryUsageMb")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("TotalRendersProcessed")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("WorkerName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("BrowserWorkerMetrics");
                 });
 
             modelBuilder.Entity("PdfEngine.Domain.Entities.DownloadAccessLog", b =>
@@ -136,6 +205,101 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("DownloadAccessLogs");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.EmailLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ToEmail")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("EmailLogs");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.FeatureFlag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TargetPlan")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("FeatureFlags");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.Invitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("Invitations");
                 });
 
             modelBuilder.Entity("PdfEngine.Domain.Entities.Invoice", b =>
@@ -189,6 +353,36 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.ToTable("Invoices");
                 });
 
+            modelBuilder.Entity("PdfEngine.Domain.Entities.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("Notifications");
+                });
+
             modelBuilder.Entity("PdfEngine.Domain.Entities.PdfJob", b =>
                 {
                     b.Property<string>("JobId")
@@ -207,6 +401,9 @@ namespace PdfEngine.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DiagnosticsJson")
+                        .HasColumnType("text");
 
                     b.Property<string>("DocumentName")
                         .IsRequired()
@@ -263,9 +460,81 @@ namespace PdfEngine.Infrastructure.Migrations
 
                     b.HasKey("JobId");
 
-                    b.HasIndex("TenantId");
+                    b.HasIndex("TenantId", "Environment", "CreatedAt")
+                        .HasDatabaseName("IX_PdfJob_Tenant_Environment_Created");
 
                     b.ToTable("PdfJobs");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.PdfJobSnapshot", b =>
+                {
+                    b.Property<string>("JobId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BrowserVersion")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("HarJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Html")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OptionsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TemplateVersion")
+                        .HasColumnType("text");
+
+                    b.HasKey("JobId");
+
+                    b.ToTable("PdfJobSnapshots");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.PersonalAccessToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PersonalAccessTokens");
                 });
 
             modelBuilder.Entity("PdfEngine.Domain.Entities.ProcessedWebhookEvent", b =>
@@ -324,6 +593,98 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.ToTable("RefreshTokens");
                 });
 
+            modelBuilder.Entity("PdfEngine.Domain.Entities.RenderAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AssetUrl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsSuccess")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("RequestId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("RenderAssets");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SCIMProvisioning", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ScimApiKeyHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("SCIMProvisionings");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SSOConfiguration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClientSecretEncrypted")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("MetadataUrl")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("SSOConfigurations");
+                });
+
             modelBuilder.Entity("PdfEngine.Domain.Entities.SavedTemplate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -336,12 +697,31 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("EstimatedPageCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ForkedFromId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("HtmlContent")
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Industry")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TemplateType")
                         .HasColumnType("text");
 
                     b.Property<Guid>("TenantId")
@@ -357,6 +737,157 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.ToTable("SavedTemplates");
                 });
 
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SavedTemplateVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("HtmlContent")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReferenceScreenshotBase64")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SavedTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SavedTemplateId");
+
+                    b.ToTable("SavedTemplateVersions");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SdkUsage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CallCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("SdkUsages");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.StorageProvider", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AccessKeyEncrypted")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("BucketName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Endpoint")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ProviderType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Region")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SecretKeyEncrypted")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("StorageProviders");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SupportTicket", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("SupportTickets");
+                });
+
             modelBuilder.Entity("PdfEngine.Domain.Entities.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -369,8 +900,19 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Property<DateTime>("BillingCycleStart")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("BrandingColor")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CustomLogoUrl")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsTwoFactorEnabled")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("MonthlyHardLimit")
                         .HasColumnType("integer");
@@ -407,12 +949,56 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Property<DateTime?>("SuspendedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Timezone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("TwoFactorSecret")
                         .HasColumnType("text");
 
                     b.HasKey("Id");
 
                     b.ToTable("Tenants");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.TenantEntitlement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ApiKeyLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ConcurrentRenderLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MonthlyRenderLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RequestsPerMinute")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RetentionDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StorageLimitGb")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TeamMemberLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("WebhookLimit")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("TenantEntitlements");
                 });
 
             modelBuilder.Entity("PdfEngine.Domain.Entities.TwoFactorRecoveryCode", b =>
@@ -441,6 +1027,34 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.ToTable("TwoFactorRecoveryCodes");
                 });
 
+            modelBuilder.Entity("PdfEngine.Domain.Entities.UsageAggregate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("FailedRenders")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SuccessfulRenders")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("TotalLatencyMs")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("UsageAggregates");
+                });
+
             modelBuilder.Entity("PdfEngine.Domain.Entities.UsageRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -453,12 +1067,22 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Property<string>("AssetsWaterfall")
                         .HasColumnType("text");
 
+                    b.Property<string>("AuthMechanism")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClientIp")
+                        .HasColumnType("text");
+
                     b.Property<string>("CorrelationId")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<decimal>("Cost")
                         .HasColumnType("numeric");
+
+                    b.Property<string>("DocumentName")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("DurationMs")
                         .HasColumnType("integer");
@@ -472,6 +1096,12 @@ namespace PdfEngine.Infrastructure.Migrations
 
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("text");
+
+                    b.Property<string>("FileUrl")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsWatermarked")
+                        .HasColumnType("boolean");
 
                     b.Property<double>("MemoryUsageMb")
                         .HasColumnType("double precision");
@@ -491,6 +1121,9 @@ namespace PdfEngine.Infrastructure.Migrations
 
                     b.Property<string>("RequestId")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SandboxEnvironment")
                         .HasColumnType("text");
 
                     b.Property<string>("SdkLanguage")
@@ -515,13 +1148,17 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Property<DateTime>("Timestamp")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("UserAgent")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ApiKeyId");
 
-                    b.HasIndex("TenantId");
-
                     b.HasIndex("Timestamp");
+
+                    b.HasIndex("TenantId", "Environment", "Timestamp")
+                        .HasDatabaseName("IX_UsageRecord_Tenant_Environment_Timestamp");
 
                     b.ToTable("UsageRecords");
                 });
@@ -535,17 +1172,47 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DiscoverySource")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Email")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EmailVerificationToken")
                         .HasColumnType("text");
 
                     b.Property<int>("FailedLoginAttempts")
                         .HasColumnType("integer");
 
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsEmailVerified")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("LockoutEnd")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("OnboardingCompleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("OnboardingStep")
+                        .HasColumnType("integer");
+
                     b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("PasswordResetExpires")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PasswordResetToken")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProgrammingLanguage")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -553,8 +1220,20 @@ namespace PdfEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("TargetLanguage")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TeamSize")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("UseCase")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -581,6 +1260,9 @@ namespace PdfEngine.Infrastructure.Migrations
 
                     b.Property<bool>("IsSuccess")
                         .HasColumnType("boolean");
+
+                    b.Property<long>("LatencyMs")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Payload")
                         .IsRequired()
@@ -662,6 +1344,17 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("PdfEngine.Domain.Entities.Asset", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("PdfEngine.Domain.Entities.AuditLog", b =>
                 {
                     b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
@@ -680,7 +1373,40 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("PdfEngine.Domain.Entities.EmailLog", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.Invitation", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("PdfEngine.Domain.Entities.Invoice", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.Notification", b =>
                 {
                     b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
                         .WithMany()
@@ -702,6 +1428,25 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("PdfEngine.Domain.Entities.PersonalAccessToken", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PdfEngine.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("PdfEngine.Domain.Entities.RefreshToken", b =>
                 {
                     b.HasOne("PdfEngine.Domain.Entities.User", "User")
@@ -713,7 +1458,92 @@ namespace PdfEngine.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SCIMProvisioning", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SSOConfiguration", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("PdfEngine.Domain.Entities.SavedTemplate", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SavedTemplateVersion", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.SavedTemplate", "SavedTemplate")
+                        .WithMany("Versions")
+                        .HasForeignKey("SavedTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SavedTemplate");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SdkUsage", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.StorageProvider", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SupportTicket", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PdfEngine.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.TenantEntitlement", b =>
                 {
                     b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
                         .WithMany()
@@ -728,6 +1558,17 @@ namespace PdfEngine.Infrastructure.Migrations
                 {
                     b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
                         .WithMany("TwoFactorRecoveryCodes")
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.UsageAggregate", b =>
+                {
+                    b.HasOne("PdfEngine.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -783,6 +1624,11 @@ namespace PdfEngine.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("PdfEngine.Domain.Entities.SavedTemplate", b =>
+                {
+                    b.Navigation("Versions");
                 });
 
             modelBuilder.Entity("PdfEngine.Domain.Entities.Tenant", b =>

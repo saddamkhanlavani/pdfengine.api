@@ -58,8 +58,9 @@ public class PdfRenderWorker : BackgroundService
 
             try
             {
-                // 1. Mark as processing
+                // 1. Mark as processing and calculate queue latency
                 job.Status = PdfJobStatus.Processing;
+                job.QueueWaitDurationMs = (long)(DateTime.UtcNow - job.CreatedAt).TotalMilliseconds;
                 await _jobStorage.UpdateJobAsync(job);
 
                 _logger.LogInformation("Worker processing Job {JobId} for TenantId {TenantId}", job.JobId, job.TenantId);
@@ -77,18 +78,67 @@ public class PdfRenderWorker : BackgroundService
 
                 var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-                var htmlContent = _encryptionService.Decrypt(job.EncryptedHtmlContent);
+                var decryptedContent = _encryptionService.Decrypt(job.EncryptedHtmlContent);
+                var (htmlContent, jobUrl) = PdfEngine.Application.Common.PdfJobContentEncoder.Decode(decryptedContent);
+
+                var options = new PdfEngine.Application.DTOs.RenderingOptions();
+                var snapshot = await dbContext.PdfJobSnapshots.FindAsync(new object[] { job.JobId }, stoppingToken);
+                if (snapshot != null && !string.IsNullOrEmpty(snapshot.OptionsJson))
+                {
+                    try
+                    {
+                        options = System.Text.Json.JsonSerializer.Deserialize<PdfEngine.Application.DTOs.RenderingOptions>(snapshot.OptionsJson) ?? options;
+                    }
+                    catch {}
+                }
 
                 var command = new GeneratePdfCommand
                 {
                     Client = tenant,
                     ApiKey = new ApiKey { KeyPrefix = job.ApiKey, Environment = job.Environment },
                     DocumentName = job.DocumentName,
-                    HtmlContent = htmlContent
+                    HtmlContent = htmlContent ?? string.Empty,
+                    Url = jobUrl,
+                    Options = options
                 };
 
                 // 3. Execute render
                 var result = await mediator.Send(command, stoppingToken);
+
+                try
+                {
+                    job.DiagnosticsJson = System.Text.Json.JsonSerializer.Serialize(command.Diagnostics);
+                }
+                catch (Exception diagEx)
+                {
+                    _logger.LogWarning(diagEx, "Failed to serialize rendering diagnostics for job {JobId}", job.JobId);
+                }
+
+                // Save rendering snapshot details
+                try
+                {
+                    if (snapshot == null)
+                    {
+                        snapshot = new PdfJobSnapshot
+                        {
+                            JobId = job.JobId,
+                            Html = htmlContent,
+                            PayloadJson = null,
+                            OptionsJson = System.Text.Json.JsonSerializer.Serialize(command.Options),
+                            Environment = job.Environment,
+                            TemplateVersion = job.RendererVersion,
+                            BrowserVersion = "Chromium"
+                        };
+                        dbContext.PdfJobSnapshots.Add(snapshot);
+                    }
+                    
+                    snapshot.HarJson = command.Diagnostics.HarJson;
+                    await dbContext.SaveChangesAsync(stoppingToken);
+                }
+                catch (Exception snapEx)
+                {
+                    _logger.LogError(snapEx, "Failed to save or update PdfJobSnapshot for job {JobId}", job.JobId);
+                }
 
                 if (result.IsSuccess)
                 {
@@ -130,19 +180,46 @@ public class PdfRenderWorker : BackgroundService
                 _logger.LogError(ex, "Worker failed critically on Job {JobId}", job?.JobId);
                 if (job != null)
                 {
-                    job.Status = PdfJobStatus.Failed;
-                    job.ErrorMessage = ex.Message;
-                    job.CompletedAt = DateTime.UtcNow;
-                    await _jobStorage.UpdateJobAsync(job);
-
-                    await _webhookService.DispatchAsync(job.TenantId, "pdf.failed", new
+                    try
                     {
-                        jobId = job.JobId,
-                        documentName = job.DocumentName,
-                        error = ex.Message,
-                        completedAt = job.CompletedAt,
-                        correlationId = job.CorrelationId
-                    });
+                        job.RetryCount++;
+                        if (job.RetryCount >= job.MaxRetries)
+                        {
+                            job.Status = PdfJobStatus.Failed;
+                            job.IsDeadLetter = true;
+                            job.ErrorMessage = $"Max retries reached. Last Error: {ex.Message}";
+                            job.CompletedAt = DateTime.UtcNow;
+
+                            await _jobStorage.UpdateJobAsync(job);
+                            await _queue.EnqueueDeadLetterAsync(job);
+
+                            _logger.LogError("Job {JobId} exceeded max retries ({MaxRetries}) and is sent to Dead Letter Queue (DLQ).", job.JobId, job.MaxRetries);
+
+                            await _webhookService.DispatchAsync(job.TenantId, "pdf.failed", new
+                            {
+                                jobId = job.JobId,
+                                documentName = job.DocumentName,
+                                error = job.ErrorMessage,
+                                isDeadLetter = true,
+                                completedAt = job.CompletedAt,
+                                correlationId = job.CorrelationId
+                            });
+                        }
+                        else
+                        {
+                            job.Status = PdfJobStatus.Queued;
+                            job.ErrorMessage = ex.Message;
+                            
+                            await _jobStorage.UpdateJobAsync(job);
+                            await _queue.EnqueueAsync(job, stoppingToken);
+
+                            _logger.LogWarning("Job {JobId} failed (attempt {RetryCount}/{MaxRetries}). Re-queued for retry. Error: {Error}", job.JobId, job.RetryCount, job.MaxRetries, ex.Message);
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        _logger.LogError(dbEx, "Failed to update or re-enqueue failed job {JobId}", job.JobId);
+                    }
                 }
             }
         }

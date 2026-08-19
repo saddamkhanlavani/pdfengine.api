@@ -1,0 +1,26 @@
+{
+  "rowspan group straddling a page break keeps every cell exactly once": {
+    "verdict": "PASS",
+    "detail": "missing_labels=0 duplicated_labels=0 lost_values=0"
+  },
+  "colspan rows survive fragmentation intact": {
+    "verdict": "PASS",
+    "detail": "missing_sections=0 missing_cells=0"
+  },
+  "thead repeats on EVERY page the table spans": {
+    "verdict": "PASS",
+    "detail": "table_pages=10 pages_missing_header=[]"
+  },
+  "running total still reconciles after fragmentation": {
+    "verdict": "PASS",
+    "detail": "final_total=14520 present=True"
+  },
+  "row taller than a page does not silently vanish": {
+    "verdict": "PASS",
+    "detail": "before=True tall=True lastline=True after=True"
+  },
+  "wide table (25 columns) does not drop trailing columns": {
+    "verdict": "PASS",
+    "detail": "missing_last_column_cells=0/40"
+  }
+}

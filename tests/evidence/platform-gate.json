@@ -1,0 +1,70 @@
+{
+  "health endpoint is public and reports healthy": {
+    "verdict": "PASS",
+    "detail": "status=200 body=b'Healthy'"
+  },
+  "render WITHOUT api key is rejected": {
+    "verdict": "PASS",
+    "detail": "status=401 (want 401/403)"
+  },
+  "render with INVALID api key is rejected": {
+    "verdict": "PASS",
+    "detail": "status=401 (want 401/403)"
+  },
+  "render with VALID api key returns a real PDF": {
+    "verdict": "PASS",
+    "detail": "status=200 magic=b'%PDF-'"
+  },
+  "malformed body is rejected with 4xx, not 500": {
+    "verdict": "PASS",
+    "detail": "status=400 (want 4xx)"
+  },
+  "neither html nor url is rejected with a clear message": {
+    "verdict": "PASS",
+    "detail": "status=400 body=b'{\"code\":\"VALIDATION_ERROR\",\"message\":\"Provide exactly one of \\'html\\' or \\'url\\' \\xe2\\x80\\x94 not both,'"
+  },
+  "SSRF: cloud metadata endpoint is blocked with BLOCKED_URL 400": {
+    "verdict": "PASS",
+    "detail": "status=400 body=b'{\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves '"
+  },
+  "batch size cap is enforced (51 rejected)": {
+    "verdict": "PASS",
+    "detail": "status=400 body=b'{\"error\":\"Batch size (51) exceeds the maximum of 50 documents per call.\"}'"
+  },
+  "batch boundary accepted (50 queued)": {
+    "verdict": "PASS",
+    "detail": "status=202"
+  },
+  "job status for an unknown id is not a 500": {
+    "verdict": "PASS",
+    "detail": "status=404 (want 4xx, got 500 = leak)"
+  },
+  "job download without api key is rejected": {
+    "verdict": "PASS",
+    "detail": "status=401"
+  },
+  "merge endpoint validates input (<2 files rejected)": {
+    "verdict": "PASS",
+    "detail": "status=400 body=b'{\"code\":\"VALIDATION_ERROR\",\"message\":\"Provide at least two PDF files to merge.\",\"traceId\":'"
+  },
+  "PDF/A + encryption combination is rejected (spec conflict)": {
+    "verdict": "PASS",
+    "detail": "status=400 body=b'{\"code\":\"VALIDATION_ERROR\",\"message\":\"PdfaCompliance and encryption (OwnerPassword/UserPas'"
+  },
+  "tenant B has its own working credentials": {
+    "verdict": "PASS",
+    "detail": "status=200"
+  },
+  "TENANT ISOLATION: tenant B cannot read tenant A's job": {
+    "verdict": "PASS",
+    "detail": "tenantA job=8c3633fb... tenantB got 404"
+  },
+  "TENANT ISOLATION: tenant B cannot download tenant A's job": {
+    "verdict": "PASS",
+    "detail": "tenantB download got 404"
+  },
+  "tenant A CAN read its own job (isolation is not just blanket denial)": {
+    "verdict": "PASS",
+    "detail": "owner got 200 (want 200)"
+  }
+}

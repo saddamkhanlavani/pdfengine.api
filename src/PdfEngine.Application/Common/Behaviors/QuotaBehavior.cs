@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
@@ -16,12 +17,24 @@ public class QuotaBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TR
 {
     private readonly IUsageService _usageService;
     private readonly IPdfStorage _pdfStorage;
+    private readonly IClientContextProvider _clientContextProvider;
+    private readonly ITenantEntitlementService _entitlementService;
+    private readonly IEmailService _emailService;
     private readonly ILogger<QuotaBehavior<TRequest, TResponse>> _logger;
 
-    public QuotaBehavior(IUsageService usageService, IPdfStorage pdfStorage, ILogger<QuotaBehavior<TRequest, TResponse>> logger)
+    public QuotaBehavior(
+        IUsageService usageService, 
+        IPdfStorage pdfStorage, 
+        IClientContextProvider clientContextProvider, 
+        ITenantEntitlementService entitlementService,
+        IEmailService emailService,
+        ILogger<QuotaBehavior<TRequest, TResponse>> logger)
     {
         _usageService = usageService;
         _pdfStorage = pdfStorage;
+        _clientContextProvider = clientContextProvider;
+        _entitlementService = entitlementService;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -31,6 +44,10 @@ public class QuotaBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TR
         if (tenant == null) return await next();
 
         var plan = PlanRegistry.Plans[tenant.Plan];
+        var entitlement = await _entitlementService.GetEntitlementAsync(tenant.Id);
+        int monthlyLimit = entitlement != null && entitlement.MonthlyRenderLimit > 0
+            ? entitlement.MonthlyRenderLimit
+            : plan.IncludedQuota;
         
         // Reset check (Logic from user instructions)
         if (DateTime.UtcNow > tenant.BillingCycleStart.AddMonths(1))
@@ -43,24 +60,47 @@ public class QuotaBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TR
         var usageCount = await _usageService.GetUsageThisMonthAsync(tenant.Id, tenant.BillingCycleStart);
 
         // Soft limit (80%) warning
-        if (usageCount >= plan.IncludedQuota * 0.8 && usageCount < plan.IncludedQuota)
+        if (usageCount >= monthlyLimit * 0.8 && usageCount < monthlyLimit)
         {
             _logger.LogWarning("Tenant {TenantName} has reached 80% of their quota ({Usage}/{Quota}).", 
-                tenant.Name, usageCount, plan.IncludedQuota);
+                tenant.Name, usageCount, monthlyLimit);
+        }
+
+        // Check and trigger lifecycle email alerts at 85%, 95%, 100%
+        int[] warningThresholds = new[] { 85, 95, 100 };
+        foreach (var pct in warningThresholds)
+        {
+            int thresholdVal = (int)(monthlyLimit * (pct / 100.0));
+            if (usageCount == thresholdVal && thresholdVal > 0)
+            {
+                var adminEmail = await _entitlementService.GetTenantAdminEmailAsync(tenant.Id);
+                if (!string.IsNullOrEmpty(adminEmail))
+                {
+                    try
+                    {
+                        await _emailService.SendUsageThresholdAlertAsync(tenant, adminEmail, pct);
+                        _logger.LogInformation("Sent {Percent}% usage alert email to {Email}", pct, adminEmail);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to send usage alert email to {Email}", adminEmail);
+                    }
+                }
+            }
         }
 
         // Hard limit enforcement
-        if (usageCount >= plan.IncludedQuota)
+        if (usageCount >= monthlyLimit)
         {
             if (tenant.Plan == PlanType.Free)
             {
                 _logger.LogError("Tenant {TenantName} has exceeded their Free quota.", tenant.Name);
-                return (TResponse)Result<byte[]>.Fail(new Error("Quota.Exceeded", "Monthly quota exceeded for Free plan. Please upgrade to Pro."));
+                return (TResponse)Result<byte[]>.Fail(Error.QuotaExceededError("Monthly quota exceeded. Please upgrade your plan."));
             }
             
             // For Pro/Enterprise, we allow overage but log it for billing
             _logger.LogInformation("Tenant {TenantName} is in overage ({Usage}/{Quota}).", 
-                tenant.Name, usageCount, plan.IncludedQuota);
+                tenant.Name, usageCount, monthlyLimit);
         }
 
         var startTime = DateTime.UtcNow;
@@ -74,11 +114,13 @@ public class QuotaBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TR
         // Track usage asynchronously
         var requestId = Guid.NewGuid().ToString();
 
+        string? fileUrl = null;
+
         if (response.IsSuccess && response.Value != null)
         {
             try 
             {
-                await _pdfStorage.SaveAsync(response.Value, requestId, request.DocumentName);
+                fileUrl = await _pdfStorage.SaveAsync(response.Value, requestId, request.DocumentName);
             }
             catch (Exception ex)
             {
@@ -86,15 +128,33 @@ public class QuotaBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TR
             }
         }
 
+        string? clientIp = _clientContextProvider.GetClientIp() ?? "127.0.0.1";
+        string? userAgent = _clientContextProvider.GetUserAgent() ?? "PdfEngine Background Worker";
+        string? authMechanism = _clientContextProvider.GetAuthMechanism() ?? "Queue Worker";
+
+        bool isWatermarked = request.ApiKey?.KeyPrefix?.StartsWith("pk_test_") == true || 
+                              request.ApiKey?.Environment?.Equals("Development", StringComparison.OrdinalIgnoreCase) == true;
+
+        string sandboxEnv = request.ApiKey?.Environment == "Production" 
+            ? "Isolation Sandbox v2.1 (Production)" 
+            : "Dev Sandbox v1.4 (Development)";
+
         await _usageService.TrackUsageAsync(
             tenant.Id,
             request.ApiKey?.Id,
             requestId,
+            request.DocumentName,
             pdfSize,
             durationMs,
             statusCode,
             response.IsSuccess,
-            response.IsFailure ? response.Error.Message : null);
+            response.IsFailure ? response.Error.Message : null,
+            clientIp,
+            userAgent,
+            authMechanism,
+            isWatermarked,
+            sandboxEnv,
+            fileUrl);
 
         return response;
     }

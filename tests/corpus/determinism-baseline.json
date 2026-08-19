@@ -1,0 +1,22 @@
+{
+  "text-only": {
+    "verdict": "PASS",
+    "structural": "65725c521520d019b08792de053a3b00735451de6490c0fd7b5c03d75f3d2245"
+  },
+  "grid-and-table": {
+    "verdict": "PASS",
+    "structural": "041cd2411aa4c10f42708e7c5463ea6847d05d164f6c3354e2b25716a0ea3b70"
+  },
+  "svg-and-image": {
+    "verdict": "PASS",
+    "structural": "064c7cd7ec4ab91d834734f116bf153702a1b876c79a500950bbe7df2fc573fe"
+  },
+  "webfont": {
+    "verdict": "PASS",
+    "structural": "066c659997fbcd0743706a5533ee6e97a1dc55b2523f6557fd9cfe3752f8dfda"
+  },
+  "clock-and-random": {
+    "verdict": "PASS",
+    "structural": "ceae92c679744003aa92952604c5681ed882396b15334b73c29be4cd0363a69c"
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "latin": {
+    "label": "Latin (English)",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "The quick brown fox jumps over the lazy dog 0123456789.",
+    "extracted": "The quick brown fox jumps over the lazy dog 0123456789."
+  },
+  "latin-accented": {
+    "label": "Latin (accented / Vietnamese)",
+    "verdict": "SPACING",
+    "detail": "characters correct; word-boundary spacing differs (affects exact phrase search only)",
+    "source": "Tiếng Việt: Cộng hòa Xã hội Chủ nghĩa Việt Nam.",
+    "extracted": "Tiế ng Việt: Cộng hòa Xã hội Chủ nghĩa Việt Nam."
+  },
+  "cyrillic": {
+    "label": "Cyrillic (Russian)",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "Съешь же ещё этих мягких французских булок.",
+    "extracted": "Съешь же ещё этих мягких французских булок."
+  },
+  "greek": {
+    "label": "Greek",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "Ξεσκεπάζω την ψυχοφθόρα βδελυγμία.",
+    "extracted": "Ξεσκεπάζω την ψυχοφθόρα βδελυγμία."
+  },
+  "devanagari": {
+    "label": "Devanagari (Hindi)",
+    "verdict": "SPACING",
+    "detail": "characters correct; word-boundary spacing differs (affects exact phrase search only)",
+    "source": "पीडीएफइंजन यूनिकोड फॉन्ट का पूरी तरह समर्थन करता है और जटिल संयुक्ताक्षरों को सही ढंग से प्रस्तुत करता है।",
+    "extracted": "पीडीएफइं जन यूनिकोड फॉन्ट का पूरी तरह समर्थन करता है और जटिल संयुक्ताक्षरों को सही ढंग से प्रस्तुत करता है।"
+  },
+  "bengali": {
+    "label": "Bengali",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "আমি বাংলায় গান গাই, আমি বাংলার গান গাই।",
+    "extracted": "আমি বাংলায় গান গাই, আমি বাংলার গান গাই।"
+  },
+  "tamil": {
+    "label": "Tamil",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "தமிழ் மொழி உலகின் தொன்மையான மொழிகளில் ஒன்றாகும்.",
+    "extracted": "தமிழ் மொழி உலகின் தொன்மையான மொழிகளில் ஒன்றாகும்."
+  },
+  "thai": {
+    "label": "Thai",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "เป็นมนุษย์สุดประเสริฐเลิศคุณค่า กว่าบรรดาฝูงสัตว์เดรัจฉาน",
+    "extracted": "เป็นมนุษย์สุดประเสริฐเลิศคุณค่า กว่าบรรดาฝูงสัตว์เดรัจฉาน"
+  },
+  "japanese": {
+    "label": "Japanese (CJK)",
+    "verdict": "SPACING",
+    "detail": "characters correct; word-boundary spacing differs (affects exact phrase search only)",
+    "source": "PDFEngineは日本語を含む多言語フォントのレンダリングに完全対応しています。",
+    "extracted": "PDFEngine は日本語を含む多言語フォントのレンダリングに完全対応しています。"
+  },
+  "chinese": {
+    "label": "Chinese Simplified",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "中文渲染测试：多语言字体嵌入与文本提取验证。",
+    "extracted": "中文渲染测试：多语言字体嵌入与文本提取验证。"
+  },
+  "korean": {
+    "label": "Korean (Hangul)",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "다국어 한글 렌더링 지원으로 레이아웃이 항상 정밀하게 출력됩니다.",
+    "extracted": "다국어 한글 렌더링 지원으로 레이아웃이 항상 정밀하게 출력됩니다."
+  },
+  "hebrew": {
+    "label": "Hebrew (RTL)",
+    "verdict": "SPACING",
+    "detail": "characters correct; word-boundary spacing differs (affects exact phrase search only)",
+    "source": "מנוע PDFEngine תומך באופן מלא בכיווניות מימין לשמאל.",
+    "extracted": "מנוע PDFEngineתומך באופן מלא בכיווניות מימין לשמאל."
+  },
+  "arabic": {
+    "label": "Arabic (RTL)",
+    "verdict": "PASS",
+    "detail": "every token survives (RTL run extracted in visual order, which is correct)",
+    "source": "يقوم محرك PDFEngine بمعالجة النصوص العربية ذات الاتجاه المعاكس بشكل صحيح.",
+    "extracted": "يقوم محرك PDFEngineبمعالجة النصوص العربية ذات هاجتالا سكاعملا بشكل صحيح."
+  },
+  "arabic-simple": {
+    "label": "Arabic without lam-alef ligature",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "مرحبا بكم في محرك تحويل صفحات الويب.",
+    "extracted": "مرحبا بكم في محرك تحويل صفحات الويب."
+  },
+  "mixed-rtl-ltr": {
+    "label": "Mixed RTL + LTR in one sentence",
+    "verdict": "PARTIAL",
+    "detail": "4/5 tokens survived; missing e.g. ['2026-08-16.']",
+    "source": "رقم الطلب SKU-4821 بتاريخ 2026-08-16.",
+    "extracted": "رقم الطلب SKU-4821بتاريخ .16-08-2026"
+  },
+  "arabic-ligature-heavy": {
+    "label": "Arabic ligature-heavy (lam-alef x4)",
+    "verdict": "PASS",
+    "detail": "every token survives (RTL run extracted in visual order, which is correct)",
+    "source": "الاتجاه الاول الاخير الاعلى",
+    "extracted": "هاجتالا لوالا ريخالا ىلعالا"
+  },
+  "latin-fi-ligature": {
+    "label": "Latin fi/fl ligature (regression: ToC bug)",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "financials office flow affluent difficult final",
+    "extracted": "financials office flow affluent difficult final"
+  },
+  "persian": {
+    "label": "Persian (Farsi)",
+    "verdict": "PASS",
+    "detail": "",
+    "source": "موتور تبدیل صفحات وب به پی دی اف",
+    "extracted": "موتور تبدیل صفحات وب به پی دی اف"
+  },
+  "urdu": {
+    "label": "Urdu",
+    "verdict": "PASS",
+    "detail": "every token survives (RTL run extracted in visual order, which is correct)",
+    "source": "پی ڈی ایف انجن اردو متن کو درست طریقے سے پیش کرتا ہے",
+    "extracted": "پی ڈی ایف انجن اردو نتم کو درست طریقے سے پیش کرتا ہے"
+  }
+}

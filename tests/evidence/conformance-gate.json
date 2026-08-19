@@ -1,0 +1,32 @@
+{
+  "pdfa2b-basic": {
+    "verdict": "PASS",
+    "flavour": "2b",
+    "detail": "144 passed / 0 failed"
+  },
+  "pdfa3b-basic": {
+    "verdict": "PASS",
+    "flavour": "3b",
+    "detail": "146 passed / 0 failed"
+  },
+  "pdfa2b-tagged": {
+    "verdict": "PASS",
+    "flavour": "2b",
+    "detail": "144 passed / 0 failed"
+  },
+  "ua1-tagged-only": {
+    "verdict": "PASS",
+    "flavour": "ua1",
+    "detail": "106 passed / 0 failed"
+  },
+  "ua1-tagged-pdfa": {
+    "verdict": "PASS",
+    "flavour": "ua1",
+    "detail": "106 passed / 0 failed"
+  },
+  "pdfa2b-tagged-images": {
+    "verdict": "PASS",
+    "flavour": "2b",
+    "detail": "144 passed / 0 failed"
+  }
+}

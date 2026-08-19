@@ -1,0 +1,18 @@
+{
+  "I1 <script> is stripped when allowScripts is false": "PASS",
+  "I2 inline event handlers are stripped even when allowScripts is TRUE": "PASS",
+  "I3 javascript: and data:text/html URIs do not survive": "PASS",
+  "I4 SVG-embedded script does not execute": "PASS",
+  "I5 SSRF blocked \u2014 loopback by name": "PASS",
+  "I5 SSRF blocked \u2014 loopback by IP": "PASS",
+  "I5 SSRF blocked \u2014 private 10.x": "PASS",
+  "I5 SSRF blocked \u2014 private 192.168.x": "PASS",
+  "I5 SSRF blocked \u2014 link-local": "PASS",
+  "I5 SSRF blocked \u2014 IPv6 loopback": "PASS",
+  "I5 SSRF blocked \u2014 decimal IP form": "PASS",
+  "I5 SSRF blocked \u2014 IPv4-mapped IPv6": "PASS",
+  "I6 SSRF via a sub-resource inside HTML is blocked, not silently fetched": "PASS",
+  "I7 deeply nested DOM is bounded, not a hang or a 500": "PASS",
+  "I8 very large document is bounded by an explicit limit": "PASS",
+  "I9 oversized request body is refused before rendering": "PASS"
+}

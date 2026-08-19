@@ -16,6 +16,7 @@ public class WebhookDelivery
     public int AttemptCount { get; set; }
     
     public string? ResponsePayload { get; set; }
+    public long LatencyMs { get; set; }
     
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }

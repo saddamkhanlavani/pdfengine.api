@@ -1,0 +1,9 @@
+{
+  "F1 inline SVG with gradients and paths renders actual ink": "PASS",
+  "F2 canvas chart is fully drawn, not captured blank (DEFECT-005)": "PASS",
+  "F3 figure and caption are never split across a page break": "PASS",
+  "F4 raster image with transparency survives to the PDF": "PASS",
+  "F5 image optimization preserves visible content while changing bytes": "PASS",
+  "F6 chart built from CSS only (no JS) renders correctly": "PASS",
+  "F7 SVG scales predictably to its declared size, not the viewport": "PASS"
+}

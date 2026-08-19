@@ -29,9 +29,17 @@ public class BillingController : ControllerBase
         _context = context;
     }
 
+    private bool IsDeveloper()
+    {
+        var user = HttpContext.Items["User"] as User;
+        return user != null && user.Role == "Developer";
+    }
+
     [HttpGet("portal")]
     public async Task<IActionResult> GetPortalLink()
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from billing configurations.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 
@@ -61,6 +69,8 @@ public class BillingController : ControllerBase
     [HttpPost("checkout")]
     public async Task<IActionResult> CreateCheckoutSession([FromBody] CheckoutRequest request)
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from billing configurations.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         var user = HttpContext.Items["User"] as User;
         if (client == null) return Unauthorized();
@@ -72,7 +82,14 @@ public class BillingController : ControllerBase
             customerId = await billingService.CreateStripeCustomerAsync(client.Id, user?.Email ?? "billing@tenant.com");
         }
 
-        var priceId = request.Plan == "Pro" ? "price_pro_id" : "price_enterprise_id";
+        var priceId = request.Plan switch
+        {
+            "Startup" => "price_startup_id",
+            "Boost" => "price_boost_id",
+            "Growth" => "price_growth_id",
+            "Enterprise" => "price_enterprise_id",
+            _ => "price_startup_id"
+        };
 
         var options = new Stripe.Checkout.SessionCreateOptions
         {
@@ -103,6 +120,8 @@ public class BillingController : ControllerBase
     [HttpGet("invoices/{id}/download")]
     public async Task<IActionResult> DownloadInvoice(Guid id)
     {
+        if (IsDeveloper()) return Forbid("Developer role is restricted from billing configurations.");
+
         var client = HttpContext.Items["Client"] as Tenant;
         if (client == null) return Unauthorized();
 

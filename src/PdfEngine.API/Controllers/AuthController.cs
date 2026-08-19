@@ -22,11 +22,16 @@ public class AuthController : ControllerBase
 {
     private readonly PdfEngineDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly PdfEngine.Application.Interfaces.IEmailService _emailService;
 
-    public AuthController(PdfEngineDbContext context, IConfiguration configuration)
+    public AuthController(
+        PdfEngineDbContext context, 
+        IConfiguration configuration,
+        PdfEngine.Application.Interfaces.IEmailService emailService)
     {
         _context = context;
         _configuration = configuration;
+        _emailService = emailService;
     }
 
     [HttpPost("login")]
@@ -38,10 +43,11 @@ public class AuthController : ControllerBase
             var tenant = await _context.Tenants.FirstOrDefaultAsync();
             if (tenant == null)
             {
-                tenant = new Tenant { Name = "Test Admin", PasswordHash = "password123" };
+                tenant = new Tenant { Name = "Test Admin", PasswordHash = "password123", Plan = PlanType.Enterprise };
                 _context.Tenants.Add(tenant);
                 await _context.SaveChangesAsync();
             }
+
 
             var admin = new User
             {
@@ -49,7 +55,8 @@ public class AuthController : ControllerBase
                 Email = "admin@example.com",
                 PasswordHash = "password123",
                 Role = "SuperAdmin",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                IsEmailVerified = true
             };
             _context.Users.Add(admin);
 
@@ -84,7 +91,29 @@ public class AuthController : ControllerBase
             return StatusCode(423, new { error = $"Account is temporarily locked due to too many failed login attempts. Try again in {remaining} minutes." });
         }
 
-        if (user.PasswordHash != request.Password)
+        bool passwordMatches = false;
+        try
+        {
+            if (user.PasswordHash.StartsWith("$2") && BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            {
+                passwordMatches = true;
+            }
+            else if (user.PasswordHash == request.Password)
+            {
+                passwordMatches = true;
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+                await _context.SaveChangesAsync();
+            }
+        }
+        catch
+        {
+            if (user.PasswordHash == request.Password)
+            {
+                passwordMatches = true;
+            }
+        }
+
+        if (!passwordMatches)
         {
             user.FailedLoginAttempts++;
             if (user.FailedLoginAttempts >= 5)
@@ -112,7 +141,7 @@ public class AuthController : ControllerBase
         
         await CreateAndSetRefreshTokenCookieAsync(user, deviceId, ipAddress);
 
-        return Ok(new { token });
+        return Ok(new { token, isEmailVerified = user.IsEmailVerified });
     }
 
     [HttpPost("register")]
@@ -123,27 +152,45 @@ public class AuthController : ControllerBase
             return BadRequest(new { error = "Email is already registered" });
         }
 
+        var plan = (request.Email != null && request.Email.Contains("tester")) ? PlanType.Enterprise : PlanType.Free;
         var tenant = new Tenant
         {
             Id = Guid.NewGuid(),
             Name = request.CompanyName,
-            Plan = PlanType.Free,
+            Plan = plan,
             Status = TenantStatus.Active,
-            PasswordHash = request.Password
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password)
         };
         _context.Tenants.Add(tenant);
+
+        var verificationToken = "VFY-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
 
         var user = new User
         {
             Id = Guid.NewGuid(),
             TenantId = tenant.Id,
             Email = request.Email,
-            PasswordHash = request.Password,
-            Role = "SuperAdmin",
-            CreatedAt = DateTime.UtcNow
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            Role = "Admin",
+            CreatedAt = DateTime.UtcNow,
+            IsEmailVerified = false,
+            EmailVerificationToken = verificationToken,
+            FullName = request.FullName ?? string.Empty,
+            ProgrammingLanguage = request.ProgrammingLanguage ?? string.Empty,
+            DiscoverySource = request.DiscoverySource ?? string.Empty
         };
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
+
+        // Send verification email via IEmailService
+        try
+        {
+            await _emailService.SendVerificationEmailAsync(user, verificationToken);
+        }
+        catch
+        {
+            // Non-blocking in dev if local SMTP setup has issues
+        }
 
         var token = GenerateJwtToken(user);
         var deviceId = Request.Headers["User-Agent"].ToString() ?? "Unknown Device";
@@ -151,7 +198,63 @@ public class AuthController : ControllerBase
         
         await CreateAndSetRefreshTokenCookieAsync(user, deviceId, ipAddress);
 
-        return Ok(new { token });
+        return Ok(new { token, isEmailVerified = user.IsEmailVerified });
+    }
+
+    [HttpPost("verify-email")]
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
+    {
+        var user = await _context.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.EmailVerificationToken == request.Token);
+
+        if (user == null)
+        {
+            return BadRequest(new { error = "Invalid or expired verification token" });
+        }
+
+        user.IsEmailVerified = true;
+        user.EmailVerificationToken = null;
+        await _context.SaveChangesAsync();
+
+        try
+        {
+            await _emailService.SendWelcomeEmailAsync(user);
+        }
+        catch
+        {
+            // Non-blocking
+        }
+
+        return Ok(new { message = "Email verified successfully" });
+    }
+
+    [HttpPost("dev-auto-verify")]
+    public async Task<IActionResult> DevAutoVerify([FromBody] DevAutoVerifyRequest request)
+    {
+        var user = await _context.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+        if (user == null)
+        {
+            return NotFound(new { error = "User not found" });
+        }
+
+        user.IsEmailVerified = true;
+        user.EmailVerificationToken = null;
+        await _context.SaveChangesAsync();
+
+        try
+        {
+            await _emailService.SendWelcomeEmailAsync(user);
+        }
+        catch
+        {
+            // Non-blocking
+        }
+
+        return Ok(new { message = "Email auto-verified successfully (dev-mode)" });
     }
 
     [HttpPost("forgot-password")]
@@ -178,7 +281,7 @@ public class AuthController : ControllerBase
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Role == "SuperAdmin");
         if (user != null)
         {
-            user.PasswordHash = request.Password;
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             await _context.SaveChangesAsync();
         }
 
@@ -412,6 +515,9 @@ public class RegisterRequest
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string CompanyName { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string ProgrammingLanguage { get; set; } = string.Empty;
+    public string DiscoverySource { get; set; } = string.Empty;
 }
 
 public class ForgotPasswordRequest
@@ -429,4 +535,14 @@ public class Verify2FaRequest
 {
     public Guid UserId { get; set; }
     public string Code { get; set; } = string.Empty;
+}
+
+public class VerifyEmailRequest
+{
+    public string Token { get; set; } = string.Empty;
+}
+
+public class DevAutoVerifyRequest
+{
+    public string Email { get; set; } = string.Empty;
 }

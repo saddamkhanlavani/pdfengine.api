@@ -1,0 +1,30 @@
+{
+  "L1 unreachable asset degrades gracefully \u2014 document still renders": {
+    "verdict": "PASS",
+    "detail": "status=200 content preserved=True"
+  },
+  "L2 broken webfont falls back instead of failing the render": {
+    "verdict": "PASS",
+    "detail": "status=200"
+  },
+  "L3 DNS failure is categorised, not a generic 500": {
+    "verdict": "PASS",
+    "detail": "status=400 body={\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves to a priva"
+  },
+  "L4 malformed / unbalanced HTML still produces a document": {
+    "verdict": "PASS",
+    "detail": "status=200"
+  },
+  "L5 a slow asset does not hang the render past its timeout": {
+    "verdict": "PASS",
+    "detail": "status=200 elapsed=0.1s (must not hang)"
+  },
+  "L6 engine recovers after the browser process is killed": {
+    "verdict": "PASS",
+    "detail": "before=200 kill_rc=0 after=200"
+  },
+  "L7 repeated failures do not poison later good renders": {
+    "verdict": "PASS",
+    "detail": "status=200"
+  }
+}

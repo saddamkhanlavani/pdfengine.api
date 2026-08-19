@@ -104,12 +104,13 @@ public class WebhookService : IWebhookService
                 var response = await HttpClientInstance.SendAsync(request);
                 stopwatch.Stop();
 
+                delivery.LatencyMs = stopwatch.ElapsedMilliseconds;
                 delivery.ResponseStatusCode = (int)response.StatusCode;
                 delivery.ResponsePayload = await response.Content.ReadAsStringAsync();
                 delivery.IsSuccess = response.IsSuccessStatusCode;
 
                 // Log details
-                _logger.LogInformation("Webhook to {Url} status: {Status} (attempt {Attempt})", endpoint.Url, response.StatusCode, attempt);
+                _logger.LogInformation("Webhook to {Url} status: {Status} (attempt {Attempt}) in {Latency}ms", endpoint.Url, response.StatusCode, attempt, delivery.LatencyMs);
 
                 dbContext.WebhookDeliveries.Add(delivery);
                 await dbContext.SaveChangesAsync();
@@ -122,11 +123,12 @@ public class WebhookService : IWebhookService
             catch (Exception ex)
             {
                 stopwatch.Stop();
+                delivery.LatencyMs = stopwatch.ElapsedMilliseconds;
                 delivery.IsSuccess = false;
                 delivery.ResponsePayload = ex.Message;
                 delivery.ResponseStatusCode = 500;
 
-                _logger.LogWarning(ex, "Webhook dispatch failed to {Url} on attempt {Attempt}", endpoint.Url, attempt);
+                _logger.LogWarning(ex, "Webhook dispatch failed to {Url} on attempt {Attempt} in {Latency}ms", endpoint.Url, attempt, delivery.LatencyMs);
 
                 dbContext.WebhookDeliveries.Add(delivery);
                 await dbContext.SaveChangesAsync();

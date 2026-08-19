@@ -18,23 +18,49 @@ public class UsageService : IUsageService
         _context = context;
     }
 
-    public async Task TrackUsageAsync(Guid tenantId, Guid? apiKeyId, string requestId, int pdfSize, int durationMs, int statusCode, bool success, string? errorMessage = null)
+    public async Task TrackUsageAsync(
+        Guid tenantId, 
+        Guid? apiKeyId, 
+        string requestId, 
+        string documentName,
+        int pdfSize, 
+        int durationMs, 
+        int statusCode, 
+        bool success, 
+        string? errorMessage = null,
+        string? clientIp = null,
+        string? userAgent = null,
+        string? authMechanism = null,
+        bool isWatermarked = false,
+        string? sandboxEnvironment = null,
+        string? fileUrl = null)
     {
-        // Simple internal cost calculation: $0.0001 per 100ms + $0.0001 per MB
-        decimal cost = (durationMs / 1000m * 0.001m) + (pdfSize / 1024m / 1024m * 0.001m);
+        // Cost model: base $0.00010 + CPU time ($0.00005 / 100ms) + storage transfer ($0.000008 / KB)
+        decimal cost = 0.00010m + (durationMs * 0.0000005m) + ((pdfSize / 1024m) * 0.000008m);
+        cost = Math.Round(cost, 6);
 
         var record = new UsageRecord
         {
             TenantId = tenantId,
             ApiKeyId = apiKeyId,
             RequestId = requestId,
+            DocumentName = documentName,
             Timestamp = DateTime.UtcNow,
             PdfSizeBytes = pdfSize,
             DurationMs = durationMs,
             StatusCode = statusCode,
             Success = success,
             ErrorMessage = errorMessage,
-            Cost = cost
+            Cost = cost,
+            ClientIp = clientIp,
+            UserAgent = userAgent,
+            AuthMechanism = authMechanism,
+            IsWatermarked = isWatermarked,
+            SandboxEnvironment = sandboxEnvironment,
+            FileUrl = fileUrl,
+            AssetsWaterfall = "[]",
+            EncryptedHtmlSnapshot = "",
+            Environment = apiKeyId.HasValue ? (_context.ApiKeys.Find(apiKeyId.Value)?.Environment ?? "Production") : "Production"
         };
 
         _context.UsageRecords.Add(record);

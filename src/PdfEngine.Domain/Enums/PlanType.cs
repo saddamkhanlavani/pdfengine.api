@@ -3,6 +3,8 @@ namespace PdfEngine.Domain.Enums;
 public enum PlanType
 {
     Free,
-    Pro,
+    Startup,
+    Boost,
+    Growth,
     Enterprise
 }

@@ -1,0 +1,10 @@
+{
+  "K1   1 sections render": "PASS",
+  "K1   5 sections render": "PASS",
+  "K1  20 sections render": "PASS",
+  "K1 100 sections render": "PASS",
+  "K2 per-page cost does not degrade with document size": "PASS",
+  "K3 10,000-row table completes": "PASS",
+  "K4 8 concurrent renders all succeed and overlap": "PASS",
+  "K5 sustained 60 renders stay flat (leak proxy)": "PASS"
+}

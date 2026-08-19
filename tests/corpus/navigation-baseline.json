@@ -1,0 +1,9 @@
+{
+  "G1 outline is generated from headings with correct nesting": "PASS",
+  "G2 page cross-references match the REAL page, not a simulated counter": "PASS",
+  "G3 internal anchor links produce real PDF link annotations": "PASS",
+  "G4 external links are preserved with their URI intact": "PASS",
+  "G5 document metadata and language reach the PDF catalog": "PASS",
+  "G6 tagged output carries a real structure tree": "PASS",
+  "G7 unresolvable cross-reference is reported, not silently blank": "PASS"
+}

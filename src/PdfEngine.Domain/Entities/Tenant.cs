@@ -31,6 +31,12 @@ public class Tenant
     public string? StripeCustomerId { get; set; }
     public string? StripeSubscriptionId { get; set; }
 
+    // Organization Branding and Regional Settings
+    public string BrandingColor { get; set; } = "#3b82f6";
+    public string Locale { get; set; } = "en-US";
+    public string Timezone { get; set; } = "UTC";
+    public string? CustomLogoUrl { get; set; }
+
     public List<ApiKey> ApiKeys { get; set; } = new();
     public List<TwoFactorRecoveryCode> TwoFactorRecoveryCodes { get; set; } = new();
     

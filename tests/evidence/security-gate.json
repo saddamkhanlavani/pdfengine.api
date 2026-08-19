@@ -1,0 +1,66 @@
+{
+  "I1 <script> is stripped when allowScripts is false": {
+    "verdict": "PASS",
+    "detail": "status=200 script executed=False"
+  },
+  "I2 inline event handlers are stripped even when allowScripts is TRUE": {
+    "verdict": "PASS",
+    "detail": "status=200 handler fired=False"
+  },
+  "I3 javascript: and data:text/html URIs do not survive": {
+    "verdict": "PASS",
+    "detail": "dangerous URI present in output=False"
+  },
+  "I4 SVG-embedded script does not execute": {
+    "verdict": "PASS",
+    "detail": "status=200 svg script fired=False"
+  },
+  "I5 SSRF blocked \u2014 loopback by name": {
+    "verdict": "PASS",
+    "detail": "status=400 body={\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves "
+  },
+  "I5 SSRF blocked \u2014 loopback by IP": {
+    "verdict": "PASS",
+    "detail": "status=400 body={\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves "
+  },
+  "I5 SSRF blocked \u2014 private 10.x": {
+    "verdict": "PASS",
+    "detail": "status=400 body={\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves "
+  },
+  "I5 SSRF blocked \u2014 private 192.168.x": {
+    "verdict": "PASS",
+    "detail": "status=400 body={\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves "
+  },
+  "I5 SSRF blocked \u2014 link-local": {
+    "verdict": "PASS",
+    "detail": "status=400 body={\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves "
+  },
+  "I5 SSRF blocked \u2014 IPv6 loopback": {
+    "verdict": "PASS",
+    "detail": "status=400 body={\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves "
+  },
+  "I5 SSRF blocked \u2014 decimal IP form": {
+    "verdict": "PASS",
+    "detail": "status=400 body={\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves "
+  },
+  "I5 SSRF blocked \u2014 IPv4-mapped IPv6": {
+    "verdict": "PASS",
+    "detail": "status=400 body={\"code\":\"BLOCKED_URL\",\"message\":\"The requested URL (or a resource it references) resolves "
+  },
+  "I6 SSRF via a sub-resource inside HTML is blocked, not silently fetched": {
+    "verdict": "PASS",
+    "detail": "content leaked=False diagnostic emitted=True warnings=2"
+  },
+  "I7 deeply nested DOM is bounded, not a hang or a 500": {
+    "verdict": "PASS",
+    "detail": "status=400 (want 200 with diagnostic, or a 4xx limit \u2014 never 5xx/hang)"
+  },
+  "I8 very large document is bounded by an explicit limit": {
+    "verdict": "PASS",
+    "detail": "input=3.7MB status=200 (want 200 or explicit 4xx, never 5xx)"
+  },
+  "I9 oversized request body is refused before rendering": {
+    "verdict": "PASS",
+    "detail": "connection-level refusal (URLError) \u2014 acceptable"
+  }
+}

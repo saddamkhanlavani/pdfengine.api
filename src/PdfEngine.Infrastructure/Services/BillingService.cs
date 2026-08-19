@@ -206,7 +206,9 @@ public class BillingService : IBillingService
         // In a real app, these would be in config or DB
         return priceId switch
         {
-            "price_pro_id" => PlanType.Pro,
+            "price_startup_id" => PlanType.Startup,
+            "price_boost_id" => PlanType.Boost,
+            "price_growth_id" => PlanType.Growth,
             "price_enterprise_id" => PlanType.Enterprise,
             _ => PlanType.Free
         };

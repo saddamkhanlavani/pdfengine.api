@@ -7,5 +7,9 @@ namespace PdfEngine.Infrastructure.Interfaces;
 public interface IBrowserManager
 {
     Task<IBrowser> GetBrowserAsync(CancellationToken cancellationToken = default);
+    Task<IBrowserContext> GetSharedContextAsync(CancellationToken cancellationToken = default);
     bool IsBrowserAlive();
+    Task ForceRecycleBrowserAsync();
 }
+
+

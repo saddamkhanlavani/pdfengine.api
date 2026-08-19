@@ -1,0 +1,8 @@
+{
+  "rowspan group straddling a page break keeps every cell exactly once": "PASS",
+  "colspan rows survive fragmentation intact": "PASS",
+  "thead repeats on EVERY page the table spans": "PASS",
+  "running total still reconciles after fragmentation": "PASS",
+  "row taller than a page does not silently vanish": "PASS",
+  "wide table (25 columns) does not drop trailing columns": "PASS"
+}

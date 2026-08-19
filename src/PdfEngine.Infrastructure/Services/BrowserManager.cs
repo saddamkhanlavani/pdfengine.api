@@ -12,8 +12,10 @@ public sealed class BrowserManager : IBrowserManager, IAsyncDisposable
     private readonly ILogger<BrowserManager> _logger;
     private IPlaywright? _playwright;
     private IBrowser? _browser;
+    private IBrowserContext? _sharedContext;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private bool _disposed;
+    private int _renderCount = 0;
 
     public BrowserManager(ILogger<BrowserManager> logger)
     {
@@ -28,8 +30,6 @@ public sealed class BrowserManager : IBrowserManager, IAsyncDisposable
         return _browser.IsConnected;
     }
 
-    private int _renderCount = 0;
-
     public async Task<IBrowser> GetBrowserAsync(CancellationToken cancellationToken = default)
     {
         await _semaphore.WaitAsync(cancellationToken);
@@ -38,11 +38,37 @@ public sealed class BrowserManager : IBrowserManager, IAsyncDisposable
             _renderCount++;
             if (_renderCount > 50)
             {
-                _logger.LogInformation("Max render threshold (50) reached. Recycling browser instance...");
+                _logger.LogInformation("Max render threshold (50) reached. Recycling browser instance in background...");
                 await DisposeBrowserOnlyAsync();
-                _renderCount = 1; // reset count starting from current request
+                _renderCount = 1;
             }
             return await InitializeBrowserWithRetryAsync();
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    public async Task<IBrowserContext> GetSharedContextAsync(CancellationToken cancellationToken = default)
+    {
+        await _semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            _renderCount++;
+            if (_renderCount > 50)
+            {
+                _logger.LogInformation("Max render threshold (50) reached. Recycling browser instance in background...");
+                await DisposeBrowserOnlyAsync();
+                _renderCount = 1;
+            }
+            var browser = await InitializeBrowserWithRetryAsync();
+            if (_sharedContext == null)
+            {
+                _logger.LogInformation("Creating new shared browser context for connection/cache pooling...");
+                _sharedContext = await browser.NewContextAsync();
+            }
+            return _sharedContext;
         }
         finally
         {
@@ -76,6 +102,17 @@ public sealed class BrowserManager : IBrowserManager, IAsyncDisposable
                     _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
                     {
                         Headless = true,
+                        Args = new[]
+                        {
+                            "--disable-gpu",
+                            "--disable-dev-shm-usage",
+                            "--no-sandbox",
+                            "--no-first-run",
+                            "--no-zygote",
+                            "--disable-extensions",
+                            "--disable-back-forward-cache",
+                            "--js-flags=--max-old-space-size=2048"
+                        }
                     });
 
                     _browser.Disconnected += OnBrowserDisconnected;
@@ -102,10 +139,62 @@ public sealed class BrowserManager : IBrowserManager, IAsyncDisposable
 
     private async Task DisposeBrowserOnlyAsync()
     {
+        if (_sharedContext != null)
+        {
+            var oldContext = _sharedContext;
+            _sharedContext = null;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    _logger.LogInformation("Background context disposal scheduled. Waiting 15 seconds grace period...");
+                    await Task.Delay(15000);
+                    await oldContext.DisposeAsync();
+                    _logger.LogInformation("Old context disposed successfully.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error disposing old browser context in background.");
+                }
+            });
+        }
+
         if (_browser != null)
         {
-            try { await _browser.DisposeAsync(); } catch { /* Ignore */ }
+            var oldBrowser = _browser;
             _browser = null;
+
+            // Dispose old browser instance asynchronously in background after a safe grace period of 15 seconds
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    _logger.LogInformation("Background browser disposal scheduled. Waiting 15 seconds grace period...");
+                    await Task.Delay(15000);
+                    _logger.LogInformation("Disposing old Chromium browser instance...");
+                    await oldBrowser.DisposeAsync();
+                    _logger.LogInformation("Old Chromium browser instance disposed successfully.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error disposing old browser instance in background.");
+                }
+            });
+        }
+    }
+
+    public async Task ForceRecycleBrowserAsync()
+    {
+        await _semaphore.WaitAsync();
+        try
+        {
+            _logger.LogWarning("Forced browser recycling triggered.");
+            await DisposeBrowserOnlyAsync();
+            _renderCount = 0;
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 

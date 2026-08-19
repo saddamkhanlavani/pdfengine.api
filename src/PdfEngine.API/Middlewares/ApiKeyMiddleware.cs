@@ -34,7 +34,9 @@ public class ApiKeyMiddleware
             path.StartsWithSegments("/api/webhooks/stripe") || 
             path.StartsWithSegments("/api/v1/webhooks/stripe") || 
             path.StartsWithSegments("/api/auth") || 
-            path.StartsWithSegments("/api/v1/auth"))
+            path.StartsWithSegments("/api/v1/auth") ||
+            path.StartsWithSegments("/api/public") || 
+            path.StartsWithSegments("/api/v1/public"))
         {
             await _next(context);
             return;
@@ -63,6 +65,51 @@ public class ApiKeyMiddleware
                     context.Items["Client"] = jwtClient;
                     context.Items["TenantId"] = jwtClient.Id; // Set active tenant context
                     await _next(context);
+                    return;
+                }
+            }
+        }
+
+        // Check for Personal Access Token (PAT) in Authorization header
+        if (context.Request.Headers.TryGetValue("Authorization", out var authHeader) && 
+            !string.IsNullOrWhiteSpace(authHeader))
+        {
+            var authStr = authHeader.ToString();
+            if (authStr.StartsWith("Bearer pat_", StringComparison.OrdinalIgnoreCase))
+            {
+                var patToken = authStr.Substring("Bearer ".Length).Trim();
+                var patHash = PdfEngine.Infrastructure.Security.HashHelper.ComputeSha256Hash(patToken);
+
+                var patRecord = await dbContext.PersonalAccessTokens
+                    .Include(p => p.Tenant)
+                    .Include(p => p.User)
+                    .FirstOrDefaultAsync(p => p.TokenHash == patHash);
+
+                if (patRecord != null && patRecord.Tenant != null && patRecord.Tenant.IsActive)
+                {
+                    patRecord.LastUsedAt = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync();
+
+                    context.Items["Client"] = patRecord.Tenant;
+                    context.Items["TenantId"] = patRecord.TenantId;
+                    context.Items["User"] = patRecord.User;
+
+                    // Set claims identity so context.User.Identity?.IsAuthenticated yields true
+                    var claims = new[]
+                    {
+                        new Claim(ClaimTypes.NameIdentifier, patRecord.UserId.ToString()),
+                        new Claim("tenantId", patRecord.TenantId.ToString()),
+                        new Claim(ClaimTypes.Role, patRecord.User?.Role ?? "Developer")
+                    };
+                    var identity = new ClaimsIdentity(claims, "PAT");
+                    context.User = new ClaimsPrincipal(identity);
+
+                    await _next(context);
+                    return;
+                }
+                else
+                {
+                    await WriteErrorResponse(context, 401, "Personal Access Token is invalid or expired.");
                     return;
                 }
             }
@@ -109,22 +156,53 @@ public class ApiKeyMiddleware
         }
 
         // 2. Scope Validation
-        var scopes = keyRecord.Scopes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? Array.Empty<string>();
+        var scopes = keyRecord.Scopes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => s.ToLowerInvariant()).ToArray() ?? Array.Empty<string>();
         var requestPath = context.Request.Path.Value ?? "";
         if (requestPath.Contains("/pdf", StringComparison.OrdinalIgnoreCase) || 
             requestPath.Contains("/jobs", StringComparison.OrdinalIgnoreCase))
         {
-            if (!scopes.Contains("render:pdf"))
+            if (!scopes.Contains("render") && !scopes.Contains("render:pdf"))
             {
-                await WriteErrorResponse(context, 403, "Forbidden: API key does not have the 'render:pdf' scope.");
+                await WriteErrorResponse(context, 403, "Forbidden: API key does not have the 'Render' scope.");
                 return;
             }
         }
-        else if (requestPath.Contains("/logs", StringComparison.OrdinalIgnoreCase))
+        else if (requestPath.Contains("/templates", StringComparison.OrdinalIgnoreCase))
         {
-            if (!scopes.Contains("logs:read"))
+            if (!scopes.Contains("templates"))
             {
-                await WriteErrorResponse(context, 403, "Forbidden: API key does not have the 'logs:read' scope.");
+                await WriteErrorResponse(context, 403, "Forbidden: API key does not have the 'Templates' scope.");
+                return;
+            }
+        }
+        else if (requestPath.Contains("/logs", StringComparison.OrdinalIgnoreCase) ||
+                 requestPath.Contains("/storage", StringComparison.OrdinalIgnoreCase) ||
+                 requestPath.Contains("/download", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!scopes.Contains("storage") && !scopes.Contains("logs:read"))
+            {
+                await WriteErrorResponse(context, 403, "Forbidden: API key does not have the 'Storage' scope.");
+                return;
+            }
+        }
+        else if (requestPath.Contains("/billing", StringComparison.OrdinalIgnoreCase) ||
+                 requestPath.Contains("/invoices", StringComparison.OrdinalIgnoreCase) ||
+                 requestPath.Contains("/subscription", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!scopes.Contains("billing"))
+            {
+                await WriteErrorResponse(context, 403, "Forbidden: API key does not have the 'Billing' scope.");
+                return;
+            }
+        }
+        else if (requestPath.Contains("/admin", StringComparison.OrdinalIgnoreCase) ||
+                 requestPath.Contains("/tenant", StringComparison.OrdinalIgnoreCase) ||
+                 requestPath.Contains("/team", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!scopes.Contains("admin"))
+            {
+                await WriteErrorResponse(context, 403, "Forbidden: API key does not have the 'Admin' scope.");
                 return;
             }
         }

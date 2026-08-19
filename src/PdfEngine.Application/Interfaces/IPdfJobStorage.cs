@@ -8,4 +8,6 @@ public interface IPdfJobStorage
     Task SaveJobAsync(PdfJob job);
     Task<PdfJob?> GetJobAsync(string jobId);
     Task UpdateJobAsync(PdfJob job);
+    Task SaveSnapshotAsync(PdfJobSnapshot snapshot);
+    Task<PdfJobSnapshot?> GetSnapshotAsync(string jobId);
 }
