@@ -15,6 +15,8 @@
   "T2-2c signing metadata reaches the signature dictionary": "PASS",
   "T2-2g a timestamped signature is PAdES B-T, not just a basic signature": "PASS",
   "T2-2h an unreachable timestamp authority FAILS rather than dropping the timestamp": "PASS",
+  "T2-2i validation data is embedded and the signature survives it (PAdES B-LT)": "PASS",
+  "T2-2j the embedded revocation lists are real CRLs, not placeholders": "PASS",
   "T2-2d signing and encryption are refused together, not silently broken": "PASS",
   "T2-2e a bad certificate fails clearly, never with a 500": "PASS",
   "T2-2f an unsigned document carries no signature dictionary": "PASS",

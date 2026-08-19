@@ -3813,6 +3813,39 @@ public class PlaywrightPdfService : IPdfService
         var hex = Encoding.ASCII.GetBytes(Convert.ToHexString(der).PadRight(slotLength, '0'));
         Buffer.BlockCopy(hex, 0, bytes, slotStart, slotLength);
 
+        // B-LT: append the evidence needed to validate this signature without reaching the
+        // issuing authority. Everything the CMS carries is collected — the signer's chain
+        // and, when the signature was timestamped, the authority's certificates too, since
+        // the timestamp needs validating just as much as the signature does.
+        if (options.EmbedValidationData)
+        {
+            var chain = new List<X509Certificate2> { certificate };
+            chain.AddRange(cms.Certificates.OfType<X509Certificate2>());
+            foreach (var signerInfo in cms.SignerInfos)
+            {
+                foreach (var attribute in signerInfo.UnsignedAttributes)
+                {
+                    if (attribute.Oid?.Value != TimestampAttributeOid) continue;
+                    foreach (var value in attribute.Values)
+                    {
+                        try
+                        {
+                            var token = new SignedCms();
+                            token.Decode(value.RawData);
+                            chain.AddRange(token.Certificates.OfType<X509Certificate2>());
+                        }
+                        catch (Exception)
+                        {
+                            // A token this engine cannot re-read still signed the document
+                            // correctly; only its certificates are missed from the store.
+                        }
+                    }
+                }
+            }
+
+            bytes = ApplyDocumentSecurityStore(bytes, chain, logger, diagnosticWarnings);
+        }
+
         logger?.LogInformation("Document signed with certificate {Subject} ({Bytes}-byte CMS).",
             certificate.Subject, der.Length);
         var level = string.IsNullOrWhiteSpace(options.TimestampUrl)
@@ -4176,6 +4209,212 @@ public class PlaywrightPdfService : IPdfService
         }
     }
 
+
+
+    // --- T2-2 (B-LT): document security store -------------------------------------
+
+    /// <summary>
+    /// Appends a Document Security Store carrying the material needed to validate the
+    /// signature long after the fact — the certificate chain and the CRLs that say those
+    /// certificates were not revoked.
+    ///
+    /// This is what separates PAdES B-T from B-LT. A timestamped signature proves WHEN it
+    /// was made; it still requires a verifier to reach the issuing CA years later to learn
+    /// whether the certificate had been revoked. Embedding that evidence makes the document
+    /// self-contained, which is the entire point for archival.
+    ///
+    /// Written as an INCREMENTAL UPDATE — the original bytes are left untouched and new
+    /// objects are appended with their own cross-reference section pointing back at the
+    /// previous one. Re-saving the document through a PDF library instead would rewrite the
+    /// bytes the signature seals and destroy it. That is also why this is hand-written
+    /// rather than delegated: no library here can append without rewriting.
+    /// </summary>
+    private static byte[] ApplyDocumentSecurityStore(
+        byte[] signedBytes, IEnumerable<X509Certificate2> certificates,
+        ILogger? logger, List<string>? diagnosticWarnings)
+    {
+        var text = Encoding.Latin1.GetString(signedBytes);
+
+        var rootMatch = Regex.Matches(text, @"/Root\s+(\d+)\s+\d+\s+R").LastOrDefault();
+        var sizeMatch = Regex.Matches(text, @"/Size\s+(\d+)").LastOrDefault();
+        var startMatch = Regex.Matches(text, @"startxref\s+(\d+)").LastOrDefault();
+        if (rootMatch == null || sizeMatch == null || startMatch == null)
+        {
+            throw new InvalidOperationException(
+                "The signed document's trailer could not be read, so validation data could not be appended.");
+        }
+
+        var catalogNumber = int.Parse(rootMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+        var nextObject = int.Parse(sizeMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+        var previousXref = long.Parse(startMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+
+        // The catalog is rewritten with a /DSS added. Its existing contents are reused
+        // verbatim rather than rebuilt, so nothing else about the document changes.
+        var catalogMatch = Regex.Match(text, $@"(?<![0-9]){catalogNumber}\s+0\s+obj\s*<<(?<body>.*?)>>\s*endobj",
+            RegexOptions.Singleline);
+        if (!catalogMatch.Success)
+        {
+            throw new InvalidOperationException(
+                $"The document catalog (object {catalogNumber}) could not be located, so validation data could not be appended.");
+        }
+        var catalogBody = catalogMatch.Groups["body"].Value;
+
+        var distinctCerts = certificates
+            .Where(c => c != null)
+            .GroupBy(c => c.Thumbprint)
+            .Select(g => g.First())
+            .ToList();
+        if (distinctCerts.Count == 0) return signedBytes;
+
+        var crls = DownloadRevocationLists(distinctCerts, logger);
+
+        var appended = new StringBuilder();
+        var offsets = new List<(int Number, long Offset)>();
+        var baseLength = (long)signedBytes.Length;
+
+        // A byte the file does not end with, so the appended section starts on its own line.
+        appended.Append('\n');
+
+        long CurrentOffset() => baseLength + appended.Length;
+
+        var certRefs = new List<int>();
+        foreach (var certificate in distinctCerts)
+        {
+            var raw = certificate.RawData;
+            offsets.Add((nextObject, CurrentOffset()));
+            appended.Append(nextObject).Append(" 0 obj\n<< /Length ").Append(raw.Length).Append(" >>\nstream\n")
+                    .Append(Encoding.Latin1.GetString(raw)).Append("\nendstream\nendobj\n");
+            certRefs.Add(nextObject);
+            nextObject++;
+        }
+
+        var crlRefs = new List<int>();
+        foreach (var crl in crls)
+        {
+            offsets.Add((nextObject, CurrentOffset()));
+            appended.Append(nextObject).Append(" 0 obj\n<< /Length ").Append(crl.Length).Append(" >>\nstream\n")
+                    .Append(Encoding.Latin1.GetString(crl)).Append("\nendstream\nendobj\n");
+            crlRefs.Add(nextObject);
+            nextObject++;
+        }
+
+        var dssNumber = nextObject++;
+        offsets.Add((dssNumber, CurrentOffset()));
+        appended.Append(dssNumber).Append(" 0 obj\n<< /Type /DSS");
+        if (certRefs.Count > 0)
+            appended.Append(" /Certs [").Append(string.Join(" ", certRefs.Select(r => $"{r} 0 R"))).Append(']');
+        if (crlRefs.Count > 0)
+            appended.Append(" /CRLs [").Append(string.Join(" ", crlRefs.Select(r => $"{r} 0 R"))).Append(']');
+        appended.Append(" >>\nendobj\n");
+
+        offsets.Add((catalogNumber, CurrentOffset()));
+        appended.Append(catalogNumber).Append(" 0 obj\n<<").Append(catalogBody)
+                .Append(" /DSS ").Append(dssNumber).Append(" 0 R >>\nendobj\n");
+
+        // Cross-reference section. Entries are exactly 20 bytes each, and the subsections
+        // must be ordered by object number — a reader that finds them out of order rejects
+        // the file.
+        var xrefOffset = CurrentOffset();
+        appended.Append("xref\n");
+        foreach (var group in GroupConsecutive(offsets.OrderBy(o => o.Number).ToList()))
+        {
+            appended.Append(group[0].Number).Append(' ').Append(group.Count).Append('\n');
+            foreach (var entry in group)
+            {
+                appended.Append(entry.Offset.ToString("D10", CultureInfo.InvariantCulture))
+                        .Append(" 00000 n\r\n");
+            }
+        }
+
+        appended.Append("trailer\n<< /Size ").Append(nextObject)
+                .Append(" /Root ").Append(catalogNumber).Append(" 0 R /Prev ").Append(previousXref)
+                .Append(" >>\nstartxref\n").Append(xrefOffset).Append("\n%%EOF\n");
+
+        var result = new byte[signedBytes.Length + appended.Length];
+        Buffer.BlockCopy(signedBytes, 0, result, 0, signedBytes.Length);
+        var appendedBytes = Encoding.Latin1.GetBytes(appended.ToString());
+        Buffer.BlockCopy(appendedBytes, 0, result, signedBytes.Length, appendedBytes.Length);
+
+        logger?.LogInformation("Embedded validation data: {Certs} certificate(s), {Crls} CRL(s).",
+            distinctCerts.Count, crls.Count);
+        diagnosticWarnings?.Add(crls.Count > 0
+            ? $"Signature notice: validation data embedded ({distinctCerts.Count} certificate(s), {crls.Count} CRL(s)) — the signature can be checked without reaching the issuing authority. This is PAdES B-LT."
+            : $"Signature notice: {distinctCerts.Count} certificate(s) embedded, but NO certificate revocation list could be retrieved, so a verifier must still reach the issuing authority. That is short of PAdES B-LT — it usually means the certificate carries no CRL distribution point.");
+
+        return result;
+    }
+
+    /// <summary>Groups xref entries into consecutive runs, which is what a subsection is.</summary>
+    private static List<List<(int Number, long Offset)>> GroupConsecutive(List<(int Number, long Offset)> entries)
+    {
+        var groups = new List<List<(int Number, long Offset)>>();
+        foreach (var entry in entries)
+        {
+            if (groups.Count > 0 && groups[^1][^1].Number + 1 == entry.Number) groups[^1].Add(entry);
+            else groups.Add(new List<(int, long)> { entry });
+        }
+        return groups;
+    }
+
+    /// <summary>
+    /// Fetches each certificate's revocation list from the CRL distribution point it
+    /// advertises.
+    ///
+    /// Best effort by design: a certificate with no distribution point, or an unreachable
+    /// one, is reported through the caller's diagnostics rather than failing the signature.
+    /// The signature itself is already complete and valid at this point — what is at stake
+    /// is only whether a verifier will need network access years from now.
+    /// </summary>
+    private static List<byte[]> DownloadRevocationLists(
+        IEnumerable<X509Certificate2> certificates, ILogger? logger)
+    {
+        const string CrlDistributionPointOid = "2.5.29.31";
+        var lists = new List<byte[]>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+
+        foreach (var certificate in certificates)
+        {
+            var extension = certificate.Extensions[CrlDistributionPointOid];
+            if (extension == null) continue;
+
+            // The distribution points are IA5Strings inside the DER. Pulling the URLs out
+            // textually avoids hand-rolling an ASN.1 parser for one extension.
+            foreach (Match match in Regex.Matches(
+                         Encoding.Latin1.GetString(extension.RawData), @"https?://[^\s\x00-\x1f<>""]+"))
+            {
+                var url = match.Value.TrimEnd('.', ',', ')');
+                if (!seen.Add(url)) continue;
+                try
+                {
+                    var bytes = http.GetByteArrayAsync(url).GetAwaiter().GetResult();
+                    // A PEM-armoured list is converted; a DER one is already what is wanted.
+                    lists.Add(bytes.Length > 0 && bytes[0] == 0x30 ? bytes : ConvertPemToDer(bytes));
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning("Could not fetch the revocation list at {Url}: {Message}", url, ex.Message);
+                }
+            }
+        }
+
+        return lists.Where(l => l.Length > 0).ToList();
+    }
+
+    private static byte[] ConvertPemToDer(byte[] pem)
+    {
+        try
+        {
+            var text = Encoding.ASCII.GetString(pem);
+            var body = Regex.Replace(text, "-----(BEGIN|END)[^-]*-----", string.Empty);
+            return Convert.FromBase64String(Regex.Replace(body, @"\s+", string.Empty));
+        }
+        catch (Exception)
+        {
+            return Array.Empty<byte>();
+        }
+    }
 
     // --- T2-3: interactive form fields --------------------------------------------
 

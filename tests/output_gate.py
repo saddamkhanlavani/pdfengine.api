@@ -6,7 +6,7 @@ Tier 1 is about how a document is LAID OUT. This tier is about what the resultin
 be USED for, and each item maps to a customer segment that cannot be served without it:
 
   T2-1  attachments / embedded files   EU e-invoicing (Factur-X / ZUGFeRD)
-  T2-2  digital signatures            signed contracts and approvals (PAdES B-T)
+  T2-2  digital signatures            signed contracts and approvals (PAdES B-T / B-LT)
   T2-3  interactive form fields      fillable text fields and checkboxes
   T2-4  split / rotate / flatten / N-up  document assembly
   T2-5  linearization                large documents opened in a browser
@@ -76,10 +76,13 @@ def verapdf_compliant(pdf_bytes, flavour):
     with tempfile.TemporaryDirectory() as td:
         p = pathlib.Path(td) / "d.pdf"
         p.write_bytes(pdf_bytes)
+        # veraPDF is a Java program; on a host with no JVM it exits without producing a
+        # report. That is "not checked", NOT "not conformant" — reporting it as a failure
+        # sends someone hunting a defect in the engine that is really a missing JDK.
         out = subprocess.run([VERAPDF, "--flavour", flavour, str(p)],
                              capture_output=True, text=True).stdout
     m = re.search(r'isCompliant="(\w+)"', out)
-    return m.group(1) == "true" if m else False
+    return m.group(1) == "true" if m else None
 
 
 CASES = []
@@ -470,6 +473,73 @@ def _():
                                "signingCertificatePassword": "gatepw",
                                "timestampUrl": "http://127.0.0.1:9/nope"})
     return (err is not None and "400" in err), f"refused={err is not None}: {(err or '')[:100]}"
+
+
+@case("T2-2i validation data is embedded and the signature survives it (PAdES B-LT)")
+def _():
+    # B-T proves WHEN a document was signed; it still needs a verifier to reach the issuing
+    # authority years later to learn the certificate was not revoked. B-LT carries that
+    # evidence in the file. The hard part is appending it WITHOUT breaking the signature,
+    # which is why it is an incremental update rather than a re-save.
+    if not tsa_reachable():
+        return None, f"timestamp authority {TSA_URL} unreachable — SKIPPED (not a pass)"
+
+    pdf, _diag, err = render("t22-blt", CONTRACT_HTML,
+                             {"signingCertificateBase64": signing_pfx(),
+                              "signingCertificatePassword": "gatepw",
+                              "timestampUrl": TSA_URL,
+                              "embedValidationData": True})
+    if err:
+        return False, err
+
+    still_valid, _ = signature_verifies(pdf)
+    has_dss = b"/Type /DSS" in pdf
+    has_certs = b"/Certs [" in pdf
+    incremental = pdf.count(b"%%EOF") >= 2
+
+    # And the document must still parse — a hand-written xref section that is even one byte
+    # out produces a file every reader rejects.
+    with tempfile.TemporaryDirectory() as td:
+        f = pathlib.Path(td) / "d.pdf"
+        f.write_bytes(pdf)
+        parses = subprocess.run(["qpdf", "--check", str(f)], capture_output=True).returncode in (0, 3)
+
+    return (still_valid and has_dss and has_certs and incremental and parses), \
+        (f"signature survives={still_valid}; /DSS={has_dss}; /Certs={has_certs}; "
+         f"incremental update={incremental}; document still parses={parses}")
+
+
+@case("T2-2j the embedded revocation lists are real CRLs, not placeholders")
+def _():
+    # A /CRLs array full of unparseable bytes would satisfy every structural check above and
+    # be worthless to the verifier it exists for.
+    if not tsa_reachable():
+        return None, f"timestamp authority {TSA_URL} unreachable — SKIPPED (not a pass)"
+
+    pdf, _diag, err = render("t22-crl", CONTRACT_HTML,
+                             {"signingCertificateBase64": signing_pfx(),
+                              "signingCertificatePassword": "gatepw",
+                              "timestampUrl": TSA_URL,
+                              "embedValidationData": True})
+    if err:
+        return False, err
+
+    refs = re.search(rb"/CRLs \[([^\]]+)\]", pdf)
+    if not refs:
+        return False, "no /CRLs array — nothing was retrieved to embed"
+
+    first = int(refs.group(1).decode().split()[0])
+    stream = re.search((str(first) + r" 0 obj\s*<< /Length (\d+) >>\s*stream\r?\n").encode(), pdf)
+    if not stream:
+        return False, f"CRL object {first} could not be located in the file"
+
+    length = int(stream.group(1))
+    with tempfile.TemporaryDirectory() as td:
+        crl = pathlib.Path(td) / "c.crl"
+        crl.write_bytes(pdf[stream.end():stream.end() + length])
+        out = subprocess.run(["openssl", "crl", "-inform", "DER", "-in", str(crl), "-noout", "-issuer"],
+                             capture_output=True, text=True)
+    return out.returncode == 0, f"openssl parsed the embedded CRL: {(out.stdout or out.stderr).strip()[:90]}"
 
 
 @case("T2-2d signing and encryption are refused together, not silently broken")

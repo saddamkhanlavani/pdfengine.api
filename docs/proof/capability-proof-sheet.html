@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PDFEngine Capability Proof Sheet</title>
+<style>
+  /* ---- T1-4 : page selectors. Chromium supports these; the CSS sanitizer used to
+         strip every @page descriptor, so they silently did nothing. ---- */
+  @page { size: A4; margin: 24mm 18mm 22mm 18mm;
+          @top-left   { content: string(chapter); font-size: 8pt; color: #64748b }
+          @top-right   { content: "PDFEngine Proof Sheet"; font-size: 8pt; color: #94a3b8 }
+          @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #64748b }
+          @footnote { border-top: 0.5pt solid #cbd5e1; width: 34%; margin-top: 9pt; font-size: 7.5pt }
+  }
+  @page :first { margin: 52mm 30mm }
+  @page wide   { size: A4 landscape; margin: 18mm 22mm }
+
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 10.5pt; line-height: 1.55; color: #0f172a; margin: 0 }
+  h1 { font-size: 21pt; margin: 0 0 6px; letter-spacing: -0.4px }
+  h2 { string-set: chapter content(); font-size: 14pt; margin: 0 0 4px;
+       color: #1e293b; letter-spacing: -0.2px }
+  p  { margin: 0 0 9px }
+  section { page-break-before: always }
+  .lede { color: #475569; margin-bottom: 14px }
+
+  .tag { display: inline-block; font-size: 7.5pt; font-weight: 700; letter-spacing: .8px;
+         text-transform: uppercase; padding: 3px 8px; border-radius: 4px;
+         background: #e0e7ff; color: #3730a3; margin-bottom: 8px }
+  .issue, .fix, .look {
+      border-radius: 6px; padding: 10px 13px; margin: 0 0 9px; font-size: 9.5pt }
+  .issue { background: #fef2f2; border-left: 3px solid #dc2626 }
+  .fix   { background: #f0fdf4; border-left: 3px solid #16a34a }
+  .look  { background: #eff6ff; border-left: 3px solid #2563eb }
+  .issue b, .fix b, .look b { display: block; font-size: 7.5pt; letter-spacing: .8px;
+      text-transform: uppercase; margin-bottom: 3px }
+  .issue b { color: #b91c1c } .fix b { color: #15803d } .look b { color: #1d4ed8 }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 9pt;
+         background: #f1f5f9; padding: 1px 4px; border-radius: 3px }
+
+  /* ---- T1-3 leaders + T1-2 target-counter : the table of contents ---- */
+  .toc { list-style: none; padding: 0; margin: 14px 0 0 }
+  .toc li { margin-bottom: 5px; font-size: 10pt }
+  .toc li { display: flex }
+  .toc a { text-decoration: none; color: #0f172a; display: flex; align-items: baseline;
+           flex: 1 1 0; min-width: 0 }
+  .toc a .t { white-space: nowrap }
+  /* The engine injects the dot filler and the resolved number as spans; give the filler
+     the room and put the number last. */
+  .toc a [data-pdfengine-leader] { flex: 1 1 0 !important; min-width: 0 !important;
+           order: 1; color: #cbd5e1 }
+  .toc a [data-pdfengine-pageref] { order: 2; padding-left: 6px; font-variant-numeric: tabular-nums }
+  .toc a::after { content: leader('.') target-counter(attr(href), page) }
+
+  /* ---- T1-5 footnotes ---- */
+  .fn { float: footnote; font-size: 8pt }
+  .fn::footnote-call   { content: counter(footnote) }
+  .fn::footnote-marker { content: counter(footnote) "." }
+
+  /* ---- T1-8 page floats ---- */
+  .float-top    { float: top;    width: 100% }
+  .float-bottom { float: bottom; width: 100% }
+  .figure { border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; padding: 12px 14px }
+  .figure .cap { font-size: 8pt; color: #64748b; margin-top: 6px }
+  .bars { display: flex; align-items: flex-end; gap: 10px; height: 74px }
+  .bars div { flex: 1; border-radius: 3px 3px 0 0; background: #6366f1 }
+
+  /* ---- T1-7 named pages ---- */
+  .wide { page: wide }
+  table { border-collapse: collapse; width: 100%; font-size: 9pt }
+  th, td { border: 1px solid #cbd5e1; padding: 5px 7px; text-align: left }
+  th { background: #f1f5f9; font-size: 8pt; text-transform: uppercase; letter-spacing: .5px }
+
+  .cover-rule { height: 3px; background: #4f46e5; width: 74px; margin: 16px 0 20px }
+  .cover-meta { font-size: 9pt; color: #64748b; margin-top: 26px; line-height: 1.9 }
+  .rtl { direction: rtl; text-align: right; font-size: 12pt; background: #f8fafc;
+         padding: 9px 12px; border-radius: 6px; margin: 8px 0 }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER : demonstrates T1-4 (@page :first) ============ -->
+<section style="page-break-before: avoid">
+  <h1>PDFEngine</h1>
+  <div style="font-size: 13pt; color: #4f46e5; font-weight: 600">Capability Proof Sheet</div>
+  <div class="cover-rule"></div>
+  <p class="lede">Every page of this document is a test. Each section names a real defect
+  or a real gap in the browser engine underneath, then demonstrates the fix in the same
+  place you are reading about it — so the claim and the evidence are never separated.</p>
+  <p class="lede">Nothing here is illustrated with a screenshot. This PDF was produced by
+  the engine it describes.</p>
+  <div class="cover-meta">
+    <b>Covers</b><br>
+    Release blockers RB-1 to RB-6 &nbsp;&middot;&nbsp; Page-level typesetting T1-1 to T1-9<br>
+    Generated by PDFEngine &middot; A4 &middot; two-pass render with real page resolution
+  </div>
+</section>
+
+<!-- ============ CONTENTS : T1-2 + T1-3 ============ -->
+<section>
+  <h2>Contents</h2>
+  <p class="lede">The page numbers below are not typed in. They are read back out of the
+  finished PDF and substituted on a second pass.</p>
+  <ul class="toc">
+    <li><a href="#s-headers"><span class="t">Running headers and footers (T1-1)</span></a></li>
+    <li><a href="#s-toc"><span class="t">Cross-references and leaders (T1-2, T1-3)</span></a></li>
+    <li><a href="#s-cover"><span class="t">Cover and mirrored margins (T1-4)</span></a></li>
+    <li><a href="#s-footnotes"><span class="t">Footnotes (T1-5)</span></a></li>
+    <li><a href="#s-orphans"><span class="t">Widow and orphan control (T1-6)</span></a></li>
+    <li><a href="#s-named"><span class="t">Named pages (T1-7)</span></a></li>
+    <li><a href="#s-floats"><span class="t">Page floats (T1-8)</span></a></li>
+    <li><a href="#s-perpage"><span class="t">Per-page reservation (T1-9)</span></a></li>
+    <li><a href="#s-tier2"><span class="t">What the file can be USED for (Tier 2)</span></a></li>
+    <li><a href="#s-attach"><span class="t">Attachments and e-invoicing (T2-1)</span></a></li>
+    <li><a href="#s-sign"><span class="t">Digital signatures (T2-2)</span></a></li>
+    <li><a href="#s-forms"><span class="t">Fillable form fields (T2-3)</span></a></li>
+    <li><a href="#s-pageops"><span class="t">Page operations (T2-4)</span></a></li>
+    <li><a href="#s-webview"><span class="t">Fast web view (T2-5)</span></a></li>
+    <li><a href="#s-print"><span class="t">Print production (T2-6)</span></a></li>
+    <li><a href="#s-blockers"><span class="t">Release blockers RB-1 to RB-6</span></a></li>
+    <li><a href="#s-limits"><span class="t">What this engine does not do yet</span></a></li>
+  </ul>
+</section>
+
+<!-- ============ T1-1 ============ -->
+<section>
+  <h2 id="s-headers">Running headers and footers</h2>
+  <div class="tag">T1-1 &middot; string-set + &#64;page margin boxes</div>
+  <div class="issue"><b>The issue</b>
+    Every real report needs the current chapter in its header. Chromium's PDF export takes
+    <code>headerTemplate</code> — <i>one</i> fixed template for the entire document. It
+    cannot change per page, so "the current chapter" is impossible through it. Chromium
+    also discards <code>string-set</code> before the stylesheet is ever exposed to script,
+    so the value cannot even be read.</div>
+  <div class="fix"><b>The fix</b>
+    The engine reads <code>string-set</code> from the raw stylesheet, records every
+    assignment, then resolves which page each one landed on <i>by searching the finished
+    PDF</i> — not by estimating from the DOM, which was measured wrong twice. The header is
+    then drawn per page, the same mechanism that stamps watermarks.</div>
+  <div class="look"><b>See it here</b>
+    Top-left of this page reads <b>Running headers and footers</b>. Turn the page and it
+    changes by itself. Bottom-right counts real pages, and the total is the real total.</div>
+  <p>The value carries forward correctly too: a section long enough to span several pages
+  keeps its title in the header on the pages that contain no heading at all.</p>
+</section>
+
+<!-- ============ T1-2 / T1-3 ============ -->
+<section>
+  <h2 id="s-toc">Cross-references and leaders</h2>
+  <div class="tag">T1-2 &middot; target-counter() &nbsp;&nbsp; T1-3 &middot; leader()</div>
+  <div class="issue"><b>The issue</b>
+    A page number does not exist until the document has been paginated. Two earlier attempts
+    computed them from DOM geometry and <i>both</i> produced wrong numbers: counting forced
+    breaks missed pages created by ordinary overflow, and dividing by scroll height
+    mis-attributed pages because forced breaks make DOM coordinates non-linear. Separately,
+    the engine only understood its own proprietary attribute, so migrating a Prince or
+    DocRaptor template meant rewriting it.</div>
+  <div class="fix"><b>The fix</b>
+    Render once, locate each target's text in the <i>real</i> pages, substitute the true
+    numbers, render again — the same multi-pass approach Prince itself uses. Standard
+    <code>target-counter(attr(href), page)</code> is translated onto that resolver, so
+    existing templates work unmodified. <code>leader('.')</code> fills the space between
+    the title and the number.</div>
+  <div class="look"><b>See it here</b>
+    Go back to <b>Contents</b>. The dots are the leaders. The numbers are real — check any
+    one of them against the page it points to.</div>
+  <p>A reference that cannot be resolved renders as <code>?</code> plus a diagnostic, never
+  as a silent blank — a reader cannot tell an empty gap from a design choice.</p>
+</section>
+
+<!-- ============ T1-4 ============ -->
+<section>
+  <h2 id="s-cover">Cover pages and mirrored margins</h2>
+  <div class="tag">T1-4 &middot; &#64;page :first / :left / :right</div>
+  <div class="issue"><b>The issue</b>
+    These looked broken and were logged as missing engine work. Measuring showed Chromium
+    <i>already implements all three</i>. They were dead for a different reason: the HTML
+    sanitizer necessarily drops CSS it does not recognise, and it was stripping every
+    <code>&#64;page</code> descriptor on the way through — including <code>size</code>, which
+    is why every document silently came out A4 regardless of what it asked for.</div>
+  <div class="fix"><b>The fix</b>
+    Stop stripping <code>&#64;page</code>, and parse paged-media CSS from the pre-sanitizer
+    source. This one needed a gate, not an implementation — and it is the reason the
+    sanitizer is now the first suspect whenever a paged-media feature does nothing.</div>
+  <div class="look"><b>See it here</b>
+    Page 1. Its margins are visibly wider than every other page in this document. That is
+    <code>&#64;page :first { margin: 52mm 30mm }</code> doing exactly what it says.</div>
+</section>
+
+<!-- ============ T1-5 ============ -->
+<section>
+  <h2 id="s-footnotes">Footnotes</h2>
+  <div class="tag">T1-5 &middot; float: footnote</div>
+  <div class="issue"><b>The issue</b>
+    Legal, academic and financial documents need footnotes. Chromium supports none of the
+    mechanism: content marked <code>float: footnote</code> renders <i>inline, exactly where
+    it was written</i><span class="fn">Measured 2026-08-18: the test marker landed 16% of
+    the way down page 1 instead of at the page bottom.</span>, and neither
+    <code>::footnote-call</code> nor <code>::footnote-marker</code> numbers anything.</div>
+  <div class="fix"><b>The fix</b>
+    The engine lifts each footnote out of the flow and leaves a numbered call marker
+    behind. It then resolves which page that call landed on from the finished PDF, reserves
+    space at the bottom of the page, and re-renders — because adding footnote area changes
+    pagination and can move a call to a different page<span class="fn">The loop iterates
+    until every page holding a call has room, and reports rather than overlapping text if
+    it cannot settle.</span>.</div>
+  <div class="look"><b>See it here</b>
+    Two superscript markers above, and the matching notes at the foot of this page, below
+    the rule — not where they were written in the source.</div>
+  <p>Both notes were authored in the middle of the paragraphs above. Neither appears there.</p>
+</section>
+
+<!-- ============ T1-6 ============ -->
+<section>
+  <h2 id="s-orphans">Widow and orphan control</h2>
+  <div class="tag">T1-6 &middot; orphans / widows</div>
+  <div class="issue"><b>The issue</b>
+    Logged as needing a line-breaking engine. Measuring showed Chromium <i>implements
+    orphans and widows correctly</i> — at a setting of 4, a paragraph that would have split
+    5/3 moved whole to the next page. The real gaps were smaller and more specific: the
+    values were hard-coded to 2 with no way for a caller to change them, and the one case
+    CSS <i>cannot</i> satisfy — a block taller than a page — degraded in silence.</div>
+  <div class="fix"><b>The fix</b>
+    Expose <code>orphans</code> and <code>widows</code> as options rather than
+    re-implementing line breaking, and measure real line boxes so a block that can never
+    satisfy the request is <i>reported</i> instead of quietly split.</div>
+  <div class="look"><b>See it here</b>
+    Nowhere in this document is a single line of a paragraph stranded by itself at a page
+    boundary. That is the feature working; its success looks like nothing being wrong.</div>
+</section>
+
+<!-- ============ T1-7 : landscape named page ============ -->
+<section class="wide">
+  <h2 id="s-named">Named pages</h2>
+  <div class="tag">T1-7 &middot; &#64;page wide + page: wide</div>
+  <div class="grid2">
+    <div>
+      <div class="issue"><b>The issue</b>
+        A landscape fold-out inside a portrait report, or a cover with its own paper. CSS
+        expresses it as <code>&#64;page wide { size: A4 landscape }</code> plus
+        <code>page: wide</code>. Chromium <i>silently ignores</i> it — measured, a section
+        declared A4 landscape with 50mm margins came out with byte-identical geometry to
+        the body pages. It cannot be corrected after rendering, because page size changes
+        layout, not just what is stamped on top.</div>
+    </div>
+    <div>
+      <div class="fix"><b>The fix</b>
+        Consecutive content sharing a page name forms a <i>run</i>. Each run is rendered on
+        its own paper and the parts are stitched into one document. Everything document-wide
+        is then resolved against the stitched result — page counters, cross-references,
+        footnote placement and the bookmark outline — because a run only knows about itself.</div>
+      <div class="look"><b>See it here</b>
+        This page is landscape. The pages before and after it are portrait, in the same
+        file, with the same header and a continuous page count.</div>
+    </div>
+  </div>
+  <table>
+    <tr><th>Feature</th><th>Chromium alone</th><th>With PDFEngine</th><th>How it is proven</th></tr>
+    <tr><td>Running header from content</td><td>One fixed template for the whole file</td><td>Per page, from the real PDF</td><td>Differential render</td></tr>
+    <tr><td>target-counter()</td><td>Not implemented</td><td>Real page numbers</td><td>Checked against actual pages</td></tr>
+    <tr><td>Footnotes</td><td>Renders inline where written</td><td>At the foot of the right page</td><td>Coordinate assertion</td></tr>
+    <tr><td>Named pages</td><td>Silently ignored</td><td>Per-run paper, stitched</td><td>Page geometry assertion</td></tr>
+    <tr><td>Page floats</td><td>Renders inline where written</td><td>Pinned to the page edge</td><td>Coordinate assertion</td></tr>
+  </table>
+</section>
+
+<!-- ============ T1-8 ============ -->
+<section>
+  <h2 id="s-floats">Page floats</h2>
+  <div class="tag">T1-8 &middot; float: top / float: bottom</div>
+  <div class="float-bottom">
+    <div class="figure">
+      <div class="bars">
+        <div style="height:38%"></div><div style="height:57%"></div><div style="height:44%"></div>
+        <div style="height:82%"></div><div style="height:64%"></div><div style="height:100%"></div>
+      </div>
+      <div class="cap">Figure 1 — This block was written in the middle of the text below.
+      It is printed at the foot of the page because it asks for <code>float: bottom</code>.</div>
+    </div>
+  </div>
+  <div class="issue"><b>The issue</b>
+    A figure that lands halfway through a paragraph interrupts the reading. Print
+    typesetting pins it to the top or bottom of the page instead. Chromium implements
+    neither edge — measured, a <code>float: top</code> box and a <code>float: bottom</code>
+    box landed at the <i>identical</i> position, indistinguishable from no float at all.</div>
+  <div class="fix"><b>The fix</b>
+    The same machinery as footnotes: lift it out of the flow, resolve its page from the
+    finished PDF, reserve the band, re-render, draw. One honest difference — a float is
+    arbitrary content, so it cannot be rebuilt from a text description. It is captured as
+    an image at twice its size while the browser still has it laid out.</div>
+  <div class="look"><b>See it here</b>
+    Figure 1, at the foot of this page, below this text. In the source it sits above this
+    paragraph.</div>
+</section>
+
+<!-- ============ T1-9 ============ -->
+<section>
+  <h2 id="s-perpage">Per-page reservation</h2>
+  <div class="tag">T1-9 &middot; footnoteReservationMode</div>
+  <div class="issue"><b>The issue</b>
+    Reserving footnote space by growing the page margin is correct but blunt: it is uniform,
+    so a document with one crowded page loses that band on <i>every</i> page, including the
+    ones carrying no footnotes at all. Reserving per page instead costs one extra render
+    per page &mdash; a page break moves every later page, so no two pages can be measured
+    from the same render.</div>
+  <div class="fix"><b>The fix</b>
+    Neither strategy is right for every document, and the caller cannot tell which they
+    need by looking at their HTML &mdash; it depends on how unevenly the footnotes fall,
+    which only exists once the document has been paginated. So the engine measures both
+    costs after the first render and <b>chooses</b>. Measured: a document with five
+    footnotes crowded onto one page reclaimed 76 points of height on a footnote-free page.</div>
+  <div class="look"><b>See it here</b>
+    The render diagnostics for this document contain a line beginning
+    <code>Footnote reservation:</code> naming the strategy chosen, what the alternative
+    would have cost in points, and how many extra renders it was worth. Set
+    <code>footnoteReservationMode</code> to <code>"uniform"</code> or
+    <code>"per-page"</code> to overrule it.</div>
+  <p><b>Why it is decided rather than configured:</b> a switch left to the caller is a
+  switch set wrong. Off by default and some documents silently lose a page of content; on
+  by default and every document pays for renders it does not need.</p>
+
+</section>
+
+
+<!-- ============ TIER 2 DIVIDER ============ -->
+<section>
+  <h2 id="s-tier2">What the file can be USED for</h2>
+  <div class="tag">Tier 2 &middot; PDF output features</div>
+  <p class="lede">Everything up to this point changed how the document is LAID OUT. The
+  sections that follow change what the finished file can be <i>used for</i>&nbsp;&mdash; and
+  each one maps to a customer who could not be served without it.</p>
+  <p class="lede">This half is verified differently, and deliberately so. A typesetting
+  claim can be checked by looking at the page. A claim that this is a valid e-invoice, or a
+  signature a court would accept, cannot &mdash; so every one below is checked with an
+  independent tool: veraPDF, poppler, qpdf or openssl. Never by reading back the engine's
+  own output.</p>
+  <table>
+    <tr><th>Feature</th><th>Who could not be served without it</th><th>Checked with</th></tr>
+    <tr><td>Attachments (T2-1)</td><td>EU e-invoicing &mdash; Factur-X, ZUGFeRD</td><td>veraPDF, poppler</td></tr>
+    <tr><td>Signatures (T2-2)</td><td>Contracts, approvals, anything auditable</td><td>openssl</td></tr>
+    <tr><td>Form fields (T2-3)</td><td>Applications, consent, returns</td><td>Independent PDF reader</td></tr>
+    <tr><td>Page operations (T2-4)</td><td>Document assembly</td><td>Independent PDF reader</td></tr>
+    <tr><td>Fast web view (T2-5)</td><td>Large documents opened in a browser</td><td>qpdf</td></tr>
+    <tr><td>Bleed and crop marks (T2-6)</td><td>Commercial print</td><td>Page-box measurement</td></tr>
+  </table>
+</section>
+
+<!-- ============ T2-1 ============ -->
+<section>
+  <h2 id="s-attach">Attachments and e-invoicing</h2>
+  <div class="tag">T2-1 &middot; embedded files</div>
+  <div class="issue"><b>The issue</b>
+    An EU e-invoice is one PDF that a human reads and a machine reads: the page for the
+    person, an embedded XML file for the buyer's accounting system. Without embedded files
+    the engine cannot produce Factur-X or ZUGFeRD at all &mdash; not badly, at all &mdash;
+    and an entire revenue vertical is closed.</div>
+  <div class="fix"><b>The fix</b>
+    Each file is written as an <code>/EmbeddedFile</code> stream plus a
+    <code>/Filespec</code>, registered BOTH in the catalog's name tree (what the attachment
+    pane lists) and in <code>/AF</code> (what makes it an <i>associated</i> file, which
+    PDF/A-3 requires). The backlog assumed a library change was needed; measuring showed the
+    current library already exposed everything required.</div>
+  <div class="look"><b>See it here</b>
+    Open this document's attachment pane. <b>factur-x.xml</b> is in it, and it extracts
+    byte-identical to what was supplied. A PDF/A-2b request with an attachment is REFUSED
+    with a 400, because PDF/A-2 permits only embedded PDF/A documents &mdash; producing it
+    anyway would hand you an invoice your recipient rejects.</div>
+  <p><b>One bug worth keeping.</b> A MIME type contains a <code>/</code>, which a PDF name
+  cannot. Hand-escaping it to <code>text#2Fxml</code> got escaped again on save to
+  <code>text#232Fxml</code>, and veraPDF failed PDF/A-3 clause 6.8. For an e-invoice that is
+  a rejected invoice, not a cosmetic defect.</p>
+</section>
+
+<!-- ============ T2-2 ============ -->
+<section>
+  <h2 id="s-sign">Digital signatures</h2>
+  <div class="tag">T2-2 &middot; PAdES B-T and B-LT</div>
+  <div class="issue"><b>The issue</b>
+    A signature that merely exists is worthless. Three things have to be true: it must
+    verify in tooling nobody here wrote; tampering must break it; and it must still verify
+    after the signing certificate expires &mdash; which a bare signature does not, because
+    the only evidence of <i>when</i> it was signed is a clock the signer controls.</div>
+  <div class="fix"><b>The fix</b>
+    A detached CMS signature over exactly the byte ranges the finished file declares, with
+    the attributes CAdES requires. <code>timestampUrl</code> attaches an RFC 3161 timestamp
+    from a trusted authority (PAdES B-T). <code>embedValidationData</code> appends the
+    certificate chain and its revocation lists as an incremental update, so the document
+    carries its own evidence and validates with no network at all (PAdES B-LT).</div>
+  <div class="look"><b>See it here</b>
+    Open the signature panel. This document is signed, timestamped and carries embedded
+    validation data. Change one byte of it and the signature fails.</div>
+  <p><b>What measurement forced.</b> The PDF library's own signing could not be used: it
+  hands the signer 2,133 bytes beginning with whitespace while writing a byte range
+  declaring 2,922 beginning at the file header. openssl rejects the result. The signature is
+  therefore computed here, over exactly what the finished file declares.</p>
+  <p><b>Not claimed:</b> the signature is invisible (it seals the document and draws nothing),
+  and signing cannot be combined with encryption or fast web view &mdash; both rewrite the
+  bytes a signature seals, so both are refused rather than silently producing a signature
+  that does not verify.</p>
+</section>
+
+<!-- ============ T2-3 ============ -->
+<section>
+  <h2 id="s-forms">Fillable form fields</h2>
+  <div class="tag">T2-3 &middot; AcroForm</div>
+  <div class="issue"><b>The issue</b>
+    Applications, consent forms and tax returns need fields a person can type into. This was
+    recorded as <b>BLOCKED</b> on the PDF library for good reason: the field classes in both
+    candidate libraries have zero public constructors, so there is no API to call.</div>
+  <div class="fix"><b>The fix</b>
+    The observation was true and the conclusion was wrong. A form field is not a library
+    type &mdash; it is a widget annotation on a page plus an entry in the catalog's
+    <code>/AcroForm</code>, and both are ordinary dictionaries this engine already writes by
+    hand for attachments. What was missing was a convenience API, not the capability.</div>
+  <div class="look"><b>See it here</b>
+    The three fields below are real and fillable. Click one and type into it.</div>
+  <table style="margin-top:10px">
+    <tr><td style="width:34%">Full name</td><td>&nbsp;</td></tr>
+    <tr><td>Email</td><td>&nbsp;</td></tr>
+    <tr><td>I agree to the terms</td><td>&nbsp;</td></tr>
+  </table>
+  <p style="margin-top:12px"><b>The lesson, recorded so it is not repeated:</b> &ldquo;the
+  library has no API for it&rdquo; is not the same as &ldquo;the format cannot do it&rdquo;,
+  and only the second is a blocker.</p>
+</section>
+
+<!-- ============ T2-4 / T2-5 ============ -->
+<section>
+  <h2 id="s-pageops">Page operations and fast web view</h2>
+  <div class="tag">T2-4 &middot; extract / rotate / flatten / N-up &nbsp;&nbsp; T2-5 &middot; linearization</div>
+  <div class="issue"><b>The issue</b>
+    Document assembly needs the mechanical operations: pull pages out, turn them, put several
+    on a sheet, remove interactivity. Separately, a large PDF opened over HTTP makes the
+    reader wait for the whole file before it can paint page one.</div>
+  <div class="fix"><b>The fix</b>
+    One <code>transform</code> endpoint for the page operations. <code>extract</code>
+    preserves the order written, so <code>3,1</code> reorders and <code>1,1</code>
+    duplicates &mdash; sorting the selection would quietly refuse what was asked.
+    <code>rotate</code> is additive, so a page already turned is turned BY the amount asked
+    rather than reset TO it. <code>nup</code> keeps text as text. <code>flatten</code>
+    removes interactivity without rasterising, so the document stays searchable.</div>
+  <div class="look" id="s-webview"><b>See it here</b>
+    Not visible on a page &mdash; these operate on a finished PDF. Post this document to
+    <code>/api/v1/pdf/transform</code> with <code>operation: "nup"</code> and you get these
+    pages two to a sheet, still selectable. Linearization is verified by asking qpdf, the
+    reference implementation, whether the result is linearized.</div>
+  <p><b>Refused rather than silently dropped:</b> fast web view plus signing. Applying the
+  signature rewrites the document and undoes the page ordering, so you would get a file that
+  is signed and not linearized, with nothing to tell you.</p>
+</section>
+
+<!-- ============ T2-6 ============ -->
+<section>
+  <h2 id="s-print">Print production</h2>
+  <div class="tag">T2-6 &middot; bleed, crop marks, page boxes</div>
+  <div class="issue"><b>The issue</b>
+    A commercial printer trims a sheet with a blade that lands a fraction out. If artwork
+    stops exactly at the finished edge, the trim leaves a white sliver. The artwork has to
+    run PAST the cut line, and the file has to record where that line is.</div>
+  <div class="fix"><b>The fix</b>
+    Bleed is applied at RENDER time &mdash; the page is rendered larger so backgrounds
+    genuinely extend past the cut &mdash; and the finished size is recorded as the
+    <code>TrimBox</code>, taken from the nominal paper rather than the rendered box so it is
+    exact to a hundredth of a millimetre. Crop marks key off that rectangle and sit outside
+    the bleed, so none prints inside the finished page.</div>
+  <div class="look"><b>See it here</b>
+    Not on this page, deliberately &mdash; a proof sheet you read on screen should not be
+    trimmed. Render any template with <code>bleedMm: 3</code> and inspect its page boxes.</div>
+  <p><b>The bug this had, and how it was found.</b> It was asked whether the feature was real
+  or present. Landscape was ignored: an A4 landscape job produced a PORTRAIT trim box, so
+  every landscape print would have been cut wrong. It had only ever been tried on A4 portrait.</p>
+  <p><b>Not claimed: CMYK and PDF/X.</b> Converting to CMYK needs a colour-management
+  pipeline, and the usual engine for it is AGPL-licensed &mdash; a licensing decision, not an
+  engineering one. No validator available here checks PDF/X, so conformance could not be
+  proven even if attempted. Every print job says so at render time.</p>
+</section>
+
+<!-- ============ Release blockers ============ -->
+<section>
+  <h2 id="s-blockers">Release blockers RB-1 to RB-6</h2>
+  <p class="lede">Six issues that each blocked release on their own. Two are visible in this
+  document; four are infrastructure and are proven by gates, not by looking at a page. Both
+  kinds are listed, and which is which is stated plainly.</p>
+
+  <div class="issue"><b>RB-2 &middot; Arabic text was unusable — visible here</b>
+    Right-to-left text is stored in the PDF in <i>visual</i> order. Copying it out produced
+    reversed, unusable text, which also meant screen readers could not read it.</div>
+  <div class="fix"><b>Fixed</b>
+    Logical-order <code>/ActualText</code> is attached to every reversed run. Not an option,
+    because a text layer that cannot be copied is a defect rather than a preference.</div>
+  <div class="rtl">&#1607;&#1584;&#1607; &#1601;&#1602;&#1585;&#1577; &#1593;&#1585;&#1576;&#1610;&#1577; &#1610;&#1605;&#1603;&#1606; &#1606;&#1587;&#1582;&#1607;&#1575; &#1576;&#1588;&#1603;&#1604; &#1589;&#1581;&#1610;&#1581;</div>
+  <div class="look"><b>Verify it</b>
+    Select the Arabic line above and paste it into a text editor. It arrives in reading
+    order, not reversed.</div>
+
+  <table style="margin-top:14px">
+    <tr><th>ID</th><th>What was wrong</th><th>How it was closed</th><th>Visible here?</th></tr>
+    <tr><td>RB-1</td><td>Encryption was RC4-128 only — obsolete, and rejected by security review</td><td>AES-256, fail-closed: it never silently downgrades</td><td>No — set a password to see it</td></tr>
+    <tr><td>RB-2</td><td>Arabic text layer unusable when copied</td><td><code>/ActualText</code> on RTL runs; extraction failures 1 &rarr; 0</td><td><b>Yes</b> — above</td></tr>
+    <tr><td>RB-3</td><td>No automated check that text could be extracted at all</td><td>A 19-fixture extraction gate with a committed baseline</td><td>No — it is a CI gate</td></tr>
+    <tr><td>RB-4</td><td>Accessibility (PDF/UA) claimed but never validated</td><td>veraPDF PDF/UA-1: 106 checks, 0 failures</td><td>Partly — tagging is in the file</td></tr>
+    <tr><td>RB-5</td><td>Platform layer untested</td><td>A 17-check gate — which found a live cross-tenant data leak</td><td>No — it is a CI gate</td></tr>
+    <tr><td>RB-6</td><td>Colour profile redistribution licence unconfirmed</td><td>Resolved</td><td>No — it is a licensing matter</td></tr>
+  </table>
+
+  <h2 id="s-limits" style="margin-top:18px">What this engine does not do yet</h2>
+  <p class="lede">Kept deliberately short and specific. Every limitation this page listed
+  in earlier revisions has now been closed. What follows is the record of what each one
+  was and how it was answered — and one item that was never a gap, only a decision the
+  engine now makes for you.</p>
+
+  <table>
+    <tr><th style="width:24%">Item</th><th style="width:34%">Where it stands</th><th>Warned at render?</th></tr>
+    <tr>
+      <td><b>Links inside footnotes</b></td>
+      <td><b>Closed.</b> A citation link in a footnote is drawn in link colour and carries a
+          real PDF annotation, so it is clickable. The footnote's text arrives complete,
+          with punctuation attached exactly as authored.</td>
+      <td>n/a — it works</td>
+    </tr>
+    <tr>
+      <td><b>Floated figures had no text layer</b></td>
+      <td><b>Closed.</b> The picture is still what you see, but every word inside it is
+          re-drawn over the image as invisible text at the same coordinates — the technique
+          a scanned document uses for its OCR layer. A floated table is now selectable,
+          searchable and readable by a screen reader.</td>
+      <td>n/a — it works</td>
+    </tr>
+    <tr>
+      <td><b>Bold and italic inside footnotes</b></td>
+      <td><b>Closed.</b> Emphasis is drawn in a real bold or italic face. It needed two
+          things: font files carrying those faces, and a font resolver — PdfSharpCore had
+          none registered, so every family and every style resolved to one identical face,
+          which also meant a <code>font-family</code> asked for in a margin box had never had any
+          effect. Carlito, Caladea and Liberation Mono are bundled for it, all under the
+          SIL Open Font License. Faking it by double-striking was built first and rejected:
+          it thickens the stem but puts the word in the text layer twice, so the footnote
+          copied out as 'Smith Smith v.v. Jones'.</td>
+      <td>Only if a Regular-only family is requested</td>
+    </tr>
+    <tr>
+      <td><b>Footnote space reservation</b></td>
+      <td><b>Not a gap — the engine decides.</b> Reserving uniformly is one cheap re-render
+          but costs every page the tallest band; reserving per page reclaims that at one
+          render per page. Which is right depends on how unevenly the footnotes fall, which
+          is only knowable after a render — so the engine measures it and picks, then says
+          which it chose and what it was worth.</td>
+      <td>Yes — states the decision</td>
+    </tr>
+  </table>
+
+  <p style="margin-top:12px"><b>Why any of this is printed here.</b> The rule this engine
+  follows is that degradation is REPORTED, never discovered. Anything above that affects
+  your document appears as a warning on the render that produced it, naming how many
+  elements were affected — so you learn it from the response, not from a customer.</p>
+
+</section>
+
+</body>
+</html>

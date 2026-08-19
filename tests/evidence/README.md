@@ -54,3 +54,14 @@ sustained-render memory trace · security suite output · integration/E2E/chaos 
 poppler `pdftotext` plus one independent extractor.
 **Do NOT use PyMuPDF as the oracle** — it misreported Devanagari conjuncts during this
 programme and produces false failures.
+
+## Running the gates with veraPDF
+
+veraPDF is a Java program. On a host with no JVM on PATH it exits without producing a
+report, and the PDF/A cases can then only be reported as SKIP — never as a pass, and (since
+2026-08-19) never as a failure either, because "not checked" and "not conformant" are
+different findings and only one of them is a bug in the engine.
+
+    export JAVA_HOME=/opt/homebrew/opt/openjdk
+    export PATH="$JAVA_HOME/bin:$PATH"
+    python3 tests/output_gate.py --verapdf /path/to/verapdf

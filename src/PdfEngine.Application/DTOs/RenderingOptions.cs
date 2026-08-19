@@ -341,6 +341,16 @@ public class RenderingOptions
     // a decision for the caller rather than a default the engine takes for them.
     public string? TimestampUrl { get; set; }
 
+    // Embeds the evidence a verifier needs to check the signature years later — the
+    // certificate chain and the revocation lists saying those certificates were still good
+    // when it was signed. This is what raises PAdES B-T to B-LT.
+    //
+    // The difference is concrete: a B-T signature still requires reaching the issuing
+    // authority at verification time, and authorities retire endpoints. A B-LT document
+    // carries its own evidence and can be validated from an archive with no network at all.
+    // Appended as an incremental update, so the bytes the signature seals are untouched.
+    public bool EmbedValidationData { get; set; }
+
     // There is deliberately no SignatureContactInfo. PDFsharp accepts one on its options
     // and never writes it — measured, the signature dictionary comes out carrying /Reason
     // and /Location and no /ContactInfo — and the dictionary is only created during save,

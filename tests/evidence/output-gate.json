@@ -63,6 +63,14 @@
     "verdict": "PASS",
     "detail": "refused=True: HTTP 400: {\"code\":\"VALIDATION_ERROR\",\"message\":\"Digital signing failed: The timestamp authority at h"
   },
+  "T2-2i validation data is embedded and the signature survives it (PAdES B-LT)": {
+    "verdict": "PASS",
+    "detail": "signature survives=True; /DSS=True; /Certs=True; incremental update=True; document still parses=True"
+  },
+  "T2-2j the embedded revocation lists are real CRLs, not placeholders": {
+    "verdict": "PASS",
+    "detail": "openssl parsed the embedded CRL: issuer=C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Assured ID Root CA"
+  },
   "T2-2d signing and encryption are refused together, not silently broken": {
     "verdict": "PASS",
     "detail": "refused=True: HTTP 400: {\"code\":\"VALIDATION_ERROR\",\"message\":\"Signing and encryption cannot be requested together "
