@@ -125,6 +125,20 @@ gate scoreboard, where Gates I, K and L are PARTIAL by design.
 
 ## Implementation notes worth keeping
 
+**A tool that could not run is not a failing test.** `verapdf_compliant()` returned `False`
+when veraPDF produced no report. veraPDF is a Java program, so on a host with no JVM the
+PDF/A-3b gate reported the engine as NON-CONFORMANT when the real finding was UNCHECKED —
+an hour of hunting a defect that was a missing JDK. It returns `None` now and the case
+SKIPs. Any gate that shells out to an external verifier needs the same three-way result:
+pass, fail, could-not-check.
+
+**The proof sheet is the composition test.** Building one document that uses every Tier 1
+and Tier 2 feature at once has now twice found defects that the per-feature gates missed,
+because gates exercise features in isolation and customers do not. It is worth re-rendering
+after any change to the render pipeline, not only when the document's content changes.
+Source lives at `docs/proof/capability-proof-sheet.html`; it is rendered with attachments,
+form fields and a B-LT signature all active, so the file demonstrates the claims it makes.
+
 **Reserving vertical space is not the same as forcing a page break.** T1-5 was designed
 around forcing a break before whatever content would be overrun, and that design is wrong
 for a reason worth stating once: page N's break shifts pages N+1 onward, so every anchor
