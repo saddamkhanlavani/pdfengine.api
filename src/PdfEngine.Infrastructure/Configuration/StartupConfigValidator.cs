@@ -68,7 +68,12 @@ public static class StartupConfigValidator
     /// </summary>
     private static readonly string[] KnownDevelopmentSecrets =
     {
+        // The original committed key. Kept in this list FOREVER even though it has been
+        // purged from history and rotated: it was published on a public remote, so any
+        // clone taken before the rewrite still has it, and a config that resurrects it
+        // must never start outside Development.
         "***PURGED-ROTATED-SECRET***",
+        "dev-only-Hgv5tVhqJXFgSKgxV0A4m7X9NCwBvvldOsif8n1x",
         "sk_test_your_key",
         "minioadmin",
         "pdfpassword",
