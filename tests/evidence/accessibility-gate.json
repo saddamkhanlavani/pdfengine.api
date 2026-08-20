@@ -72,16 +72,34 @@
       "clauses": []
     },
     {
-      "case": "tagged + Chromium headerTemplate (KNOWN: upstream, untagged)",
+      "case": "tagged + page float (described)",
       "checked": true,
-      "compliant": false,
-      "passed": 1571,
-      "failed": 3,
-      "expected": false,
+      "compliant": true,
+      "passed": 1506,
+      "failed": 0,
+      "expected": true,
       "engine_warned": true,
-      "clauses": [
-        "7.1/3"
-      ]
+      "clauses": []
+    },
+    {
+      "case": "tagged + page float (no description) \u2014 must still warn",
+      "checked": true,
+      "compliant": true,
+      "passed": 1506,
+      "failed": 0,
+      "expected": true,
+      "engine_warned": true,
+      "clauses": []
+    },
+    {
+      "case": "tagged + Chromium headerTemplate",
+      "checked": true,
+      "compliant": true,
+      "passed": 1604,
+      "failed": 0,
+      "expected": true,
+      "engine_warned": false,
+      "clauses": []
     }
   ]
 }

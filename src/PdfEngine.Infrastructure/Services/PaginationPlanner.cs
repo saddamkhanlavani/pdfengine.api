@@ -918,6 +918,16 @@ public class PaginationPlanner : IPaginationPlanner
                                 widthPt: rect.width * 0.75,
                                 heightPt: rect.height * 0.75,
                                 containsText: norm(el.textContent).length > 0,
+                                // Read from the author's markup, in the order a screen
+                                // reader would: an explicit label beats an image's alt,
+                                // which beats a tooltip. A figcaption counts too — it is
+                                // the description the sighted reader gets.
+                                altText: (el.getAttribute('aria-label')
+                                          || el.getAttribute('alt')
+                                          || (el.querySelector('img[alt]') && el.querySelector('img[alt]').getAttribute('alt'))
+                                          || (el.querySelector('figcaption') && norm(el.querySelector('figcaption').textContent))
+                                          || el.getAttribute('title')
+                                          || ''),
                                 textRuns: positionedRunsOf(el, rect),
                                 fingerprint: fp.primary,
                                 shortFingerprint: fp.shortFp,
@@ -1178,6 +1188,7 @@ public class PaginationPlanner : IPaginationPlanner
                         WidthPt = item.TryGetProperty("widthPt", out var w) ? w.GetDouble() : 0,
                         HeightPt = item.TryGetProperty("heightPt", out var h) ? h.GetDouble() : 0,
                         ContainsText = item.TryGetProperty("containsText", out var ct) && ct.GetBoolean(),
+                        AltText = item.TryGetProperty("altText", out var alt) ? alt.GetString() : null,
                         TextRuns = ReadFloatTextRuns(item),
                         Fingerprint = item.TryGetProperty("fingerprint", out var fp) ? fp.GetString() ?? string.Empty : string.Empty,
                         ShortFingerprint = item.TryGetProperty("shortFingerprint", out var sfp) ? sfp.GetString() ?? string.Empty : string.Empty,
@@ -1194,7 +1205,22 @@ public class PaginationPlanner : IPaginationPlanner
                 if (withText > 0)
                 {
                     context.Diagnostics.Warnings.Add(
-                        $"Page float notice: {withText} element(s) with `float: top`/`float: bottom` contain text and are drawn as IMAGES in the finished PDF, because arbitrary content cannot be redrawn from a text description the way a footnote can. Their text will not be selectable, searchable, or available to a screen reader. Chromium implements no page floats at all, so the alternative is leaving them mid-paragraph where they were authored.");
+                        $"Page float notice: {withText} element(s) with `float: top`/`float: bottom` contain text and are drawn as IMAGES in the finished PDF, because arbitrary content cannot be redrawn from a text description the way a footnote can. Their text will not be selectable or searchable. Chromium implements no page floats at all, so the alternative is leaving them mid-paragraph where they were authored.");
+                }
+
+                // In a tagged document each float becomes a /Figure, and because the float
+                // is pixels there is no text underneath it — the alternate text is the
+                // ONLY thing a screen reader gets. A float with no description is therefore
+                // named here rather than quietly given a generic label that tells a
+                // screen-reader user nothing about the figure they cannot see.
+                if (context.Options?.GenerateTaggedPdf == true)
+                {
+                    var undescribed = plan.PageFloats.Count(f => string.IsNullOrWhiteSpace(f.AltText));
+                    if (undescribed > 0)
+                    {
+                        context.Diagnostics.Warnings.Add(
+                            $"Accessibility warning: {undescribed} page float(s) have no description, and this document requests tagged (PDF/UA) output. A float is drawn as an image, so its `aria-label`, `alt`, `<figcaption>` or `title` is the only thing a screen reader can announce; without one the engine can only label it \"Figure N\". The document still validates — a generic label is legal — but a reader who cannot see the figure learns nothing from it.");
+                    }
                 }
             }
 

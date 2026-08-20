@@ -237,7 +237,8 @@ fonts get the `/CIDToGIDMap` ISO 32000-1 Table 117 requires. Measured with veraP
 | tagged + watermark | 1523 / 2 | **1530 / 0** |
 | tagged + header + watermark | not measured | **1598 / 0** |
 | tagged + footnote | 1625 / 8 | **1647 / 0** |
-| tagged + Chromium headerTemplate | 1571 / 3 | 1571 / 3 — upstream |
+| tagged + Chromium headerTemplate | 1571 / 3 | **1604 / 0** |
+| tagged + page float | not measured | **1506 / 0**, carrying the author's description |
 
 Footnotes are **not** artifact-marked, and that was the whole difficulty. Declaring the band
 furniture would have turned 7 failed checks into 0 while hiding the footnote from the screen
@@ -253,9 +254,28 @@ Verified beyond veraPDF's verdict: the Note is a child of the document element, 
 ParentTree slot for its MCID resolves back to the Note, the marked-content block opens and
 closes in the page stream, the footnote text still extracts, and `/Artifact` appears nowhere
 in it. The eight footnote typesetting cases (T1-5a…h) still pass, so the tagging did not
-disturb the layout. Chromium's own `headerTemplate` is drawn untagged inside Chromium's content
-stream with no hook to change it — `@page` margin boxes are the conformant route and the
-engine now says so in the warning.
+disturb the layout. **Chromium's `headerTemplate` was written off here as upstream and unfixable, and that was
+wrong.** The observation was true — Chromium draws it untagged and offers no hook — but the
+content stream belongs to the engine once Chromium hands the file over. In a tagged document
+Chromium marks all real content, so a text object sitting at marked-content depth zero is by
+construction the content it did not tag: the header, the footer and the page number, and
+nothing else. Those are wrapped as `/Artifact` after the fact. Whole `BT…ET` text objects are
+wrapped rather than arbitrary spans, so the inserted BDC/EMC cannot interleave with the
+surrounding q/Q graphics-state pairs and corrupt the stream. 1571/3 → **1604/0**, with the
+header still rendering and `qpdf --check` clean.
+
+**Page floats are now `/Figure` elements** carrying the author's own `aria-label`, `alt`,
+`<figcaption>` or `title`. A float is drawn as pixels, so that description is the ONLY thing
+a screen reader gets — there is no text layer under it. A float with no description still
+validates (a generic label is legal) and the engine reports it, because "Figure 1" tells a
+reader who cannot see the figure nothing.
+
+One bug worth keeping from that work: the first version produced a perfectly well-formed
+`/Figure <</MCID 2>> BDC EMC` with the image drawn OUTSIDE it, because the XGraphics had been
+created before the BDC and writes into the stream it appended at construction. veraPDF passes
+an empty figure without complaint, which is exactly why it had to be checked by reading the
+content stream instead of the verdict. The graphics context is now opened per float, inside
+its own block.
 
 **PAC cannot be automated.** PAC (axes4) is a Windows-only GUI with no command line, so it
 runs on no machine this project builds on. veraPDF's PDF/UA-1 profile implements the same

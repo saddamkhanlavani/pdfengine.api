@@ -188,6 +188,38 @@ else
     echo "  veraPDF not found at $VERAPDF — set VERAPDF_BIN. SKIPPING (not a pass)."
     record "Gate H PDF/A + PDF/UA" SKIP "veraPDF not installed"; SKIPPED=$((SKIPPED+1))
   fi
+  # Tier 2 output features — attachments, signatures, forms, page ops, print production
+  banner "OUTPUT: Tier 2 PDF output features"
+  if [[ -x "$VERAPDF" ]]; then
+    OUTPUT_ARGS="--verapdf $VERAPDF"
+  else
+    OUTPUT_ARGS=""
+  fi
+  if python3 tests/output_gate.py $OUTPUT_ARGS $UPDATE 2>&1 | tee "$EVIDENCE/output-gate.log" | tail -3; then
+    record "Output Tier 2" PASS "$(grep -oE 'summary:.*' "$EVIDENCE/output-gate.log" | tail -1)"
+  else
+    record "Output Tier 2" FAIL "regression vs baseline"; FAILED=$((FAILED+1))
+  fi
+
+  # T3-1 — PDF/UA across feature COMBINATIONS, not one document at a time
+  banner "T3-1: accessibility across feature combinations"
+  if [[ -x "$VERAPDF" ]]; then
+    if python3 tests/accessibility_gate.py --verapdf "$VERAPDF" 2>&1 | tee "$EVIDENCE/accessibility-gate.log" | tail -3; then
+      record "T3-1 accessibility" PASS "$(grep -oE '[0-9]+/[0-9]+ as expected.*' "$EVIDENCE/accessibility-gate.log" | tail -1)"
+    else
+      record "T3-1 accessibility" FAIL "a combination no longer behaves as recorded"; FAILED=$((FAILED+1))
+    fi
+  else
+    record "T3-1 accessibility" SKIP "veraPDF not installed"; SKIPPED=$((SKIPPED+1))
+  fi
+
+  # T3-3 — fuzzing. Short by default so it can run per-push; the nightly run is longer.
+  banner "T3-3: fuzzing (generated adversarial input)"
+  if python3 tests/fuzz_gate.py --base "$API_URL" --cases "${FUZZ_CASES:-120}" 2>&1 | tee "$EVIDENCE/fuzz-gate.log" | tail -4; then
+    record "T3-3 fuzzing" PASS "$(grep -oE '[0-9]+ inputs in.*' "$EVIDENCE/fuzz-gate.log" | tail -1)"
+  else
+    record "T3-3 fuzzing" FAIL "$(grep -oE 'fuzz gate: FAILED.*' "$EVIDENCE/fuzz-gate.log" | tail -1)"; FAILED=$((FAILED+1))
+  fi
 fi
 
 # ------------------------------------------------------------------ summary

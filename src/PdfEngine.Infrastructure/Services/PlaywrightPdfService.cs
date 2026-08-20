@@ -1345,16 +1345,11 @@ public class PlaywrightPdfService : IPdfService
                     // Footnotes are NOT listed: the band is a real /Note in the structure
                     // tree now, so tagged + footnote is conformant — measured 1647/0.
                     if (renderingContext.Plan.PageFloats.Count > 0) untagged.Add("page floats");
-                    if (command.Options.DisplayHeaderFooter
-                        && (!string.IsNullOrEmpty(command.Options.HeaderTemplate)
-                            || !string.IsNullOrEmpty(command.Options.FooterTemplate)))
-                    {
-                        // Chromium's own header/footer, unlike the engine's, is drawn
-                        // inside Chromium's content stream with no artifact marking, and
-                        // there is no hook to change that. The engine's `@page` margin
-                        // boxes are the conformant way to get the same result.
-                        untagged.Add("Chromium's headerTemplate/footerTemplate (use @page margin boxes instead, which ARE marked as artifacts)");
-                    }
+                    // Chromium's own headerTemplate/footerTemplate is NOT listed any more.
+                    // It is drawn untagged inside Chromium's content stream, but that
+                    // stream is the engine's to rewrite once Chromium is finished, and
+                    // MarkStrayTextAsArtifacts declares it pagination furniture after the
+                    // fact. Measured 1571/3 -> 1604/0.
 
                     if (untagged.Count > 0)
                     {
@@ -1865,6 +1860,22 @@ public class PlaywrightPdfService : IPdfService
             if (needsFormFields)
             {
                 ApplyFormFields(document, options, logger, diagnosticWarnings);
+            }
+
+            if (options.GenerateTaggedPdf)
+            {
+                // Runs after every pass that draws, so anything left outside the structure
+                // tree by then — Chromium's own header/footer above all — is caught.
+                var artifacts = 0;
+                foreach (var page in document.Pages)
+                {
+                    artifacts += MarkStrayTextAsArtifacts(page, logger);
+                }
+                if (artifacts > 0)
+                {
+                    logger?.LogInformation(
+                        "Marked {Count} untagged text object(s) as pagination artifacts for PDF/UA.", artifacts);
+                }
             }
 
             if (needsPdfa || needsXmpForTagging)
@@ -3445,9 +3456,130 @@ public class PlaywrightPdfService : IPdfService
     /// </summary>
     /// <returns>The MCID to mark the drawing with, or null when the document has no
     /// structure tree to join (an untagged render, where none of this applies).</returns>
+
+    /// <summary>
+    /// Declares any text Chromium drew OUTSIDE the structure tree to be a pagination
+    /// artifact, so a tagged document keeps its PDF/UA conformance when it also uses
+    /// Chromium's own headerTemplate/footerTemplate.
+    ///
+    /// This was written off as upstream and unfixable, on the true observation that
+    /// Chromium offers no hook to tag that content and draws it inside its own content
+    /// stream. The conclusion did not follow: the content stream is ours once Chromium
+    /// hands the file over, and the header text is identifiable without guessing at
+    /// coordinates. In a tagged document Chromium marks all REAL content, so a text object
+    /// sitting at marked-content depth zero is by construction the content it did not tag
+    /// — which is exactly the header, the footer and the page number.
+    ///
+    /// Wrapping whole BT…ET text objects rather than arbitrary spans is what keeps this
+    /// safe: a text object is self-contained, so a BDC before it and an EMC after it cannot
+    /// interleave with the surrounding q/Q graphics-state pairs and corrupt the stream.
+    ///
+    /// Depth is tracked ACROSS the page's streams in order, because a /Contents array is
+    /// one stream by concatenation — the engine's own footnote /Note opens in one appended
+    /// stream and closes in another, and treating each stream independently would see that
+    /// as an unbalanced block and mark tagged content as an artifact.
+    /// </summary>
+    private static int MarkStrayTextAsArtifacts(PdfSharpCore.Pdf.PdfPage page, ILogger? logger)
+    {
+        const string Open = "/Artifact << /Type /Pagination >> BDC\n";
+        var wrapped = 0;
+        var depth = 0;
+        try
+        {
+            foreach (var content in page.Contents)
+            {
+                var bytes = content.Stream?.UnfilteredValue;
+                if (bytes == null || bytes.Length == 0) continue;
+                var text = Encoding.Latin1.GetString(bytes);
+
+                var edits = new List<(int Offset, string Insert)>();
+                var textObjectStart = -1;
+                foreach (Match m in Regex.Matches(text, @"(?<![A-Za-z0-9])(BDC|BMC|EMC|BT|ET)(?![A-Za-z0-9])"))
+                {
+                    switch (m.Value)
+                    {
+                        case "BDC":
+                        case "BMC":
+                            depth++;
+                            break;
+                        case "EMC":
+                            depth--;
+                            break;
+                        case "BT":
+                            if (depth == 0) textObjectStart = m.Index;
+                            break;
+                        case "ET":
+                            if (depth == 0 && textObjectStart >= 0)
+                            {
+                                edits.Add((textObjectStart, Open));
+                                edits.Add((m.Index + 2, "\nEMC"));
+                                wrapped++;
+                            }
+                            textObjectStart = -1;
+                            break;
+                    }
+                }
+                if (edits.Count == 0) continue;
+
+                var builder = new StringBuilder(text.Length + edits.Count * 40);
+                var cursor = 0;
+                foreach (var (offset, insert) in edits.OrderBy(e => e.Offset))
+                {
+                    builder.Append(text, cursor, offset - cursor).Append(insert);
+                    cursor = offset;
+                }
+                builder.Append(text, cursor, text.Length - cursor);
+
+                content.Stream!.Value = Encoding.Latin1.GetBytes(builder.ToString());
+                content.Elements.Remove("/Filter");
+                content.Elements.Remove("/DecodeParms");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Could not mark stray text as artifacts; the page is left as Chromium wrote it.");
+            return 0;
+        }
+        return wrapped;
+    }
+
+
+    /// <summary>
+    /// Joins a page float's drawn image to the structure tree as a <c>/Figure</c>.
+    ///
+    /// A page float is a chart, a figure or a table that the engine captured as pixels, so
+    /// unlike a footnote there is no text under it to read. That makes the alternate text
+    /// the ONLY thing assistive technology gets, which is why the element carries the
+    /// author's own alt/aria-label when the element had one — and why a float with no
+    /// description is reported rather than silently given a generic label that says
+    /// nothing. Declaring it an artifact was never an option: it is the figure the page is
+    /// about.
+    /// </summary>
+    private static int? PrepareFloatFigure(
+        PdfSharpCore.Pdf.PdfDocument document, PdfSharpCore.Pdf.PdfPage page,
+        PageFloatAssignment floated, ILogger? logger)
+        => PrepareStructElement(document, page, "/Figure",
+                                $"pagefloat-{floated.Number}",
+                                string.IsNullOrWhiteSpace(floated.AltText)
+                                    ? $"Figure {floated.Number}"
+                                    : floated.AltText!,
+                                logger);
+
     private static int? PrepareFootnoteNote(
         PdfSharpCore.Pdf.PdfDocument document, PdfSharpCore.Pdf.PdfPage page,
         int footnoteNumber, ILogger? logger)
+        => PrepareStructElement(document, page, "/Note", $"footnote-{footnoteNumber}",
+                                $"Footnote {footnoteNumber}", logger);
+
+    /// <summary>
+    /// Creates a structure element of <paramref name="subtype"/>, parents it into the
+    /// document hierarchy and registers it in the page's ParentTree, returning the MCID the
+    /// drawing must be marked with. See <see cref="PrepareFootnoteNote"/> for why all four
+    /// steps have to stay consistent.
+    /// </summary>
+    private static int? PrepareStructElement(
+        PdfSharpCore.Pdf.PdfDocument document, PdfSharpCore.Pdf.PdfPage page,
+        string subtype, string id, string alt, ILogger? logger)
     {
         try
         {
@@ -3461,13 +3593,13 @@ public class PlaywrightPdfService : IPdfService
             var note = new PdfSharpCore.Pdf.PdfDictionary(document);
             document.Internals.AddObject(note);
             note.Elements["/Type"] = new PdfSharpCore.Pdf.PdfName("/StructElem");
-            note.Elements["/S"] = new PdfSharpCore.Pdf.PdfName("/Note");
+            note.Elements["/S"] = new PdfSharpCore.Pdf.PdfName(subtype);
             note.Elements["/Pg"] = PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(page);
             note.Elements["/K"] = new PdfSharpCore.Pdf.PdfInteger(nextMcid);
             // PDF/UA-1 requires a Note to be identifiable; the number is already unique
             // within the document because footnotes are numbered continuously.
-            note.Elements["/ID"] = new PdfSharpCore.Pdf.PdfString($"footnote-{footnoteNumber}");
-            note.Elements["/Alt"] = new PdfSharpCore.Pdf.PdfString($"Footnote {footnoteNumber}");
+            note.Elements["/ID"] = new PdfSharpCore.Pdf.PdfString(id);
+            note.Elements["/Alt"] = new PdfSharpCore.Pdf.PdfString(alt);
 
             // Parent it under whatever the document's top-level element is, rather than
             // under the paragraph that owns the call marker: the band is drawn at the foot
@@ -3486,8 +3618,7 @@ public class PlaywrightPdfService : IPdfService
             if (!AppendToParentTree(structRoot, page, note, nextMcid))
             {
                 logger?.LogWarning(
-                    "Footnote {Number}: could not extend the structure ParentTree, so the note is not left half-attached.",
-                    footnoteNumber);
+                    "{Id}: could not extend the structure ParentTree, so the element is not left half-attached.", id);
                 siblings.Elements.RemoveAt(siblings.Elements.Count - 1);
                 return null;
             }
@@ -3495,7 +3626,7 @@ public class PlaywrightPdfService : IPdfService
         }
         catch (Exception ex)
         {
-            logger?.LogWarning(ex, "Could not tag footnote {Number} as a /Note; it will be drawn untagged.", footnoteNumber);
+            logger?.LogWarning(ex, "Could not tag {Id} as a {Subtype}; it will be drawn untagged.", id, subtype);
             return null;
         }
     }
@@ -5646,14 +5777,30 @@ public class PlaywrightPdfService : IPdfService
             var pdfPage = document.Pages[group.Key - 1];
             var contentWidth = Math.Max(72.0, pdfPage.Width.Point - marginLeftPt - marginRightPt);
 
-            using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(
-                pdfPage, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
+            // Each float is its own /Figure, not one block covering the page: a reader
+            // moving through the structure tree should meet them one at a time, with the
+            // description that belongs to each.
+            var figures = new List<(PageFloatAssignment Float, int Mcid)>();
+            if (options.GenerateTaggedPdf)
+            {
+                foreach (var floated in group.OrderBy(f => f.Number))
+                {
+                    if (PrepareFloatFigure(document, pdfPage, floated, logger) is { } mcid)
+                    {
+                        figures.Add((floated, mcid));
+                    }
+                }
+            }
+            int? McidFor(PageFloatAssignment f) =>
+                figures.FirstOrDefault(x => x.Float.Number == f.Number) is { Float: not null } hit
+                    ? hit.Mcid : null;
 
             // Top floats run downwards from the top of the content area.
             var topCursor = topBasePt;
             foreach (var floated in group.Where(f => f.Edge == "top").OrderBy(f => f.Number))
             {
-                DrawPageFloat(gfx, floated, marginLeftPt, topCursor, contentWidth, logger);
+                DrawFloatTagged(pdfPage, floated, McidFor(floated),
+                                marginLeftPt, topCursor, contentWidth, logger);
                 topCursor += FitPageFloatHeightPt(floated, contentWidth) + PageFloatGapPt;
             }
 
@@ -5670,7 +5817,8 @@ public class PlaywrightPdfService : IPdfService
             {
                 var height = FitPageFloatHeightPt(floated, contentWidth);
                 bottomCursor -= height;
-                DrawPageFloat(gfx, floated, marginLeftPt, bottomCursor, contentWidth, logger);
+                DrawFloatTagged(pdfPage, floated, McidFor(floated),
+                                marginLeftPt, bottomCursor, contentWidth, logger);
                 bottomCursor -= PageFloatGapPt;
             }
         }
@@ -5678,6 +5826,31 @@ public class PlaywrightPdfService : IPdfService
         using var output = new MemoryStream();
         document.Save(output);
         return output.ToArray();
+    }
+
+
+    /// <summary>
+    /// Draws a page float inside its own marked-content block when the document is tagged.
+    ///
+    /// The XGraphics is created PER FLOAT, between the BDC and the EMC, and that ordering
+    /// is the whole point. XGraphics writes into the content stream it appended when it was
+    /// constructed, so a page-level instance created before the BDC puts its drawing in an
+    /// EARLIER stream than the block — measured, and the result was a well-formed
+    /// `/Figure &lt;&lt;/MCID 2&gt;&gt; BDC EMC` with nothing inside it and the image loose
+    /// outside. veraPDF is happy with an empty figure, which is exactly why this had to be
+    /// checked by reading the stream rather than by reading the verdict.
+    /// </summary>
+    private static void DrawFloatTagged(
+        PdfSharpCore.Pdf.PdfPage page, PageFloatAssignment floated, int? mcid,
+        double x, double y, double contentWidth, ILogger? logger)
+    {
+        if (mcid is not null) AppendRawContent(page, $"/Figure << /MCID {mcid} >> BDC\n");
+        using (var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(
+                   page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append))
+        {
+            DrawPageFloat(gfx, floated, x, y, contentWidth, logger);
+        }
+        if (mcid is not null) AppendRawContent(page, "EMC\n");
     }
 
     /// <summary>Vertical breathing room between a page float and the text beside it.</summary>

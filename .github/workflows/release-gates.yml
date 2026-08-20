@@ -101,3 +101,64 @@ jobs:
         with:
           name: release-gate-evidence
           path: tests/evidence/
+
+  # Everything that needs the real container image rather than a dotnet process on the
+  # runner: reproducibility (T3-4), chaos (T3-7) and the soak (T3-5).
+  #
+  # The soak lives here and NOT on a developer machine for a measured reason: run on a
+  # laptop it reported +70% latency drift twice, and both times the drift was the host —
+  # a fuzzer once, macOS daemons and a dev server the second time, at load average 17.9.
+  # A dedicated runner is the only place the number means anything, so the full 10,000
+  # runs on the nightly schedule and a short version guards pull requests.
+  container-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t pdfengine:local .
+
+      - name: Verify what the image contains
+        run: docker run --rm --entrypoint /opt/pdfengine/verify-image.sh pdfengine:local
+
+      - name: Start the stack
+        run: |
+          docker compose up -d postgres redis minio minio-init api
+          for i in $(seq 1 60); do
+            if curl -fsS -m 5 http://localhost:8080/health/live >/dev/null 2>&1; then
+              echo "engine live after ${i}0s"; break
+            fi
+            sleep 10
+          done
+          curl -fsS -m 10 http://localhost:8080/health/ready || echo "not ready yet (dependencies still settling)"
+
+      - name: Install measurement tooling
+        run: |
+          python3 -m pip install --quiet pymupdf pypdf
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends qpdf poppler-utils
+
+      - name: T3-4 reproducibility
+        run: python3 tests/reproducibility_gate.py
+
+      - name: T3-7 chaos
+        run: python3 tests/chaos_gate.py
+
+      - name: T3-5 soak (short, per push)
+        if: github.event_name != 'schedule'
+        run: python3 tests/soak_gate.py --renders 600 --concurrency 2 --sample-every 100
+
+      - name: T3-5 soak (full 10,000, nightly)
+        if: github.event_name == 'schedule'
+        run: python3 tests/soak_gate.py --renders 10000 --concurrency 2 --sample-every 100
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs --tail 200 pdfengine-api
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-gate-evidence
+          path: tests/evidence/

@@ -46,7 +46,14 @@ PIXEL = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
          "+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 
 
-def doc(page_css="", extra_css="", footnote=False):
+FLOAT_CSS = ".fig { float: top; width: 200px }"
+FLOAT_DESCRIBED = ("<div class='fig' aria-label='Revenue by quarter, rising through the year'>"
+                   "<svg width='200' height='80'><rect width='200' height='80' fill='#36c'/></svg></div>")
+FLOAT_BARE = ("<div class='fig'>"
+              "<svg width='200' height='80'><rect width='200' height='80' fill='#36c'/></svg></div>")
+
+
+def doc(page_css="", extra_css="", footnote=False, body_extra=""):
     note = "<span class='fn'>Footnote text explaining the figure.</span>" if footnote else ""
     return f"""<html lang='en'><head><title>Accessible report</title><style>
 @page {{ size: A4; margin: 20mm 16mm; {page_css} }}
@@ -54,6 +61,7 @@ body {{ font-family: sans-serif; font-size: 12px; }}
 h1 {{ string-set: doctitle content(); font-size: 18px; }}
 {extra_css}
 </style></head><body>
+{body_extra}
 <h1>Quarterly report</h1><p>{'Body copy for the accessibility fixture. ' * 60}</p>
 <h2>Detail</h2><p>More text.{note}</p>
 <table><caption>Figures</caption><thead><tr><th>Item</th><th>Value</th></tr></thead>
@@ -81,13 +89,26 @@ CASES = [
     # the document element, the page's ParentTree resolves its MCID back to it, and the
     # text still extracts.
     ("tagged + footnote", doc(extra_css=".fn { float: footnote }", footnote=True), {}, True),
-    # Chromium draws its own header/footer untagged inside its content stream and offers
-    # no hook to change it. The engine's @page margin boxes are the conformant route.
-    ("tagged + Chromium headerTemplate (KNOWN: upstream, untagged)",
+    # Chromium draws its own header/footer untagged and offers no hook to change that,
+    # which was written off here as upstream and unfixable. The observation was true and
+    # the conclusion was not: the content stream belongs to the engine once Chromium hands
+    # the file over, and in a tagged document a text object at marked-content depth zero is
+    # by construction the content Chromium did not tag. Those are wrapped as pagination
+    # artifacts after the fact. 1571/3 -> 1604/0.
+    # A page float is drawn as pixels, so it becomes a /Figure carrying the author's own
+    # description. Not an artifact: it is the figure the page is about.
+    ("tagged + page float (described)",
+     doc(extra_css=FLOAT_CSS, body_extra=FLOAT_DESCRIBED), {}, True),
+    # Legal without a description — a generic label conforms — so this asserts the document
+    # still validates AND that the engine says the figure is undescribed, because a reader
+    # who cannot see it learns nothing from "Figure 1".
+    ("tagged + page float (no description) — must still warn",
+     doc(extra_css=FLOAT_CSS, body_extra=FLOAT_BARE), {}, True),
+    ("tagged + Chromium headerTemplate",
      doc(), {"displayHeaderFooter": True,
              "headerTemplate": "<div style='font-size:9px'>Quarterly report</div>",
              "footerTemplate": "<div style='font-size:9px'>Page <span class='pageNumber'></span></div>"},
-     False),
+     True),
 ]
 
 
@@ -163,6 +184,9 @@ def main():
         # accessibility audit is worse than one that refuses, because nobody finds out
         # until the auditor does.
         if not must_pass and not warned:
+            ok = False
+        if "no description" in name and not warned:
+            # Conformant but uninformative: the engine has to say so.
             ok = False
         mark = "PASS" if ok else "FAIL"
         expectation = "conformant" if must_pass else "known non-conformant + must warn"

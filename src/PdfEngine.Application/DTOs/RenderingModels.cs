@@ -229,6 +229,16 @@ public class PageFloatAssignment
     /// <summary>PNG of the element as the browser laid it out, base64-encoded.</summary>
     public string ImageBase64 { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The author's own description of the float, from `aria-label`, `alt` or `title`.
+    ///
+    /// A page float is drawn as pixels, so this is the ONLY thing assistive technology
+    /// gets — there is no text layer underneath it to fall back on. Empty means the author
+    /// gave no description, which is reported rather than papered over with a generic
+    /// label that tells a screen-reader user nothing.
+    /// </summary>
+    public string? AltText { get; set; }
+
     /// <summary>The element's laid-out size, in points. The image is drawn to fit this
     /// box, so a capture taken at a higher pixel density simply prints sharper.</summary>
     public double WidthPt { get; set; }

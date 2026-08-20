@@ -57,7 +57,7 @@
   },
   "TENANT ISOLATION: tenant B cannot read tenant A's job": {
     "verdict": "PASS",
-    "detail": "tenantA job=8c3633fb... tenantB got 404"
+    "detail": "tenantA job=c32ada39... tenantB got 404"
   },
   "TENANT ISOLATION: tenant B cannot download tenant A's job": {
     "verdict": "PASS",
