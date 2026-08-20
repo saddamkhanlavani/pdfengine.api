@@ -77,6 +77,27 @@ def rss_mb():
     return None
 
 
+def rss_at_rest(settle=20):
+    """Container memory once the load stops.
+
+    Sampling RSS mid-flight measures how many Chromium processes happen to be alive at
+    that instant, which is a function of concurrency, not of leakage. Measured: under load
+    Chromium ran 1091-1399 MB across 15-19 processes while .NET stayed flat at ~390 MB;
+    once the load stopped it fell back to 218 MB across 3. Sampling that sawtooth produced
+    an apparent "+11.6 MB per 1000 renders" trend that does not exist.
+
+    The floor is what a leak actually moves, so the floor is what gets compared.
+    """
+    time.sleep(settle)
+    readings = []
+    for _ in range(3):
+        mb = rss_mb()
+        if mb is not None:
+            readings.append(mb)
+        time.sleep(3)
+    return round(statistics.median(readings), 1) if readings else None
+
+
 def render(name):
     payload = json.dumps({"documentName": name, "documentType": 4,
                           "html": FIXTURES[name]}).encode()
@@ -168,7 +189,9 @@ def main():
     started = time.time()
     completed = 0
 
-    print(f"\nSoak — sampling memory every {args.sample_every} renders")
+    rest_before = rss_at_rest()
+    print(f"\nMemory at rest before the run: {rest_before} MB")
+    print(f"Soak — sampling memory every {args.sample_every} renders")
     with futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
         pending = set()
         issued = 0
@@ -241,12 +264,28 @@ def main():
         leak = {"early_mb": round(early, 1), "late_mb": round(late, 1),
                 "growth_pct": round(growth * 100, 2),
                 "mb_per_1000_renders": round(per_render * 1000, 4)}
-        # A browser recycle every 50 renders means memory sawtooths; the question is
-        # whether the floor rises. 25% across the run with a positive trend is a leak.
-        if growth > 0.25 and per_render > 0:
-            failures.append(f"memory grew {growth:.0%} with a positive trend — probable leak")
+        # The in-flight numbers above are reported for shape only. The VERDICT comes from
+        # the at-rest comparison below, because that is the only measurement a leak moves.
+        print("  (in-flight figures show the sawtooth of live Chromium workers, not leakage)")
+
+    rest_after = rss_at_rest()
+    rest_growth = None
+    if rest_before and rest_after:
+        rest_growth = (rest_after - rest_before) / rest_before
+        print(f"\nmemory AT REST  {rest_before} MB before -> {rest_after} MB after "
+              f"({rest_growth:+.1%}, {(rest_after - rest_before) / max(1, completed) * 1000:+.2f} MB per 1000 renders)")
+        # Some growth on a cold process is warm-up: font caches, JIT, pooled buffers. It is
+        # bounded and it does not repeat. Measured here: the first 2500 renders added 43 MB
+        # at rest and the next 2500 added 5 MB. A leak keeps paying that cost every batch,
+        # so the threshold is set where warm-up cannot reach.
+        if rest_growth > 0.15:
+            failures.append(
+                f"memory at rest grew {rest_growth:.0%} ({rest_before} -> {rest_after} MB) — "
+                f"run again to see whether it repeats; warm-up does not, a leak does")
 
     record = {"renders": completed, "concurrency": args.concurrency,
+              "memory_at_rest": {"before_mb": rest_before, "after_mb": rest_after,
+                                 "growth_pct": round(rest_growth * 100, 2) if rest_growth is not None else None},
               "duration_s": round(duration, 1), "errors": len(errors),
               "error_rate": round(error_rate, 5),
               "latency_ms": {"median": round(statistics.median(latencies) * 1000),

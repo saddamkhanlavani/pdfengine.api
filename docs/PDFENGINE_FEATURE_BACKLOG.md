@@ -191,20 +191,38 @@ throughout. The gate now records the host's load average beside every sample and
 report drift as a verdict when load exceeded 8 — twice a soak here has produced a number
 that looked like a regression and lived in the load average.
 
-**Open, and the reason this is not a clean pass: memory trends upward in both runs.**
+**The memory trend was not real, and the heap profile found nothing because there was
+nothing in the heap.**
 
-| Run | Growth, first decile to last | Trend |
+Before profiling the .NET heap, the container's memory was broken down by process, which
+is where the answer was:
+
+| | At rest | Under load (concurrency 2) |
 |---|---|---|
-| First (confounded) | +11.9% | +7.0 MB per 1000 renders |
-| Second (clean) | +19.8% | +11.6 MB per 1000 renders |
+| .NET (`PdfEngine.API`) | ~390 MB | ~390 MB — **flat** |
+| Playwright driver (node) | ~235 MB | ~230 MB |
+| Chromium | 218 MB across **3** processes | 1091–1399 MB across **15–19** processes |
 
-Both are under the gate's 25% threshold, so it PASSES, and both are positive. Absolute
-range across the clean run was 585 MB to 1015 MB, sawtoothing with the 50-render browser
-recycle, but the floor rises. At +11.6 MB per 1000 renders a worker accumulates roughly
-1 GB per 100,000 renders, which a container with a 3.8 GB limit reaches in a few days of
-real traffic. **This needs a heap profile before high-volume production**, and the
-threshold should probably tighten once the cause is known. Not a blocker for launch at
-modest volume; definitely a thing to know about before a large customer.
+Sampling RSS mid-flight measures how many Chromium workers happen to be alive at that
+instant. That is a function of concurrency, not of leakage, and the apparent
+"+11.6 MB per 1000 renders" was that sawtooth being sampled at arbitrary points.
+
+The measurement that settles it is the FLOOR:
+
+| After | Memory at rest |
+|---|---|
+| 2,500 renders | 843 MB |
+| 5,000 renders | 848 MB |
+
+The first 2,500 renders added 43 MB and the next 2,500 added **5 MB** — bounded warm-up
+(font caches, JIT, pooled buffers), not a leak, which would charge the same amount every
+batch. **No leak. Nothing to fix in the engine.**
+
+What was fixed is the gate, which was asking the wrong question. It now quiesces the load
+and takes a median at-rest reading before and after the run, and the leak verdict comes
+from that comparison; the in-flight samples are still printed, labelled as the shape of the
+sawtooth rather than as evidence. The lesson worth keeping: **a leak moves the floor, so
+measure the floor.**
 
 ### T3-1 — what was fixed, and PAC
 
