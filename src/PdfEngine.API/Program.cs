@@ -8,6 +8,7 @@ using Serilog;
 using Serilog.Events;
 using Prometheus;
 using System;
+using System.Linq;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -47,7 +48,8 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();
 
 // Validate configurations on startup
-PdfEngine.Infrastructure.Configuration.StartupConfigValidator.Validate(builder.Configuration);
+PdfEngine.Infrastructure.Configuration.StartupConfigValidator.Validate(
+    builder.Configuration, builder.Environment.EnvironmentName);
 
 // Optional external tools. Not fatal — the engine renders without them — but an operator
 // who sees this line at boot can install the package, whereas a caller who gets a 400
@@ -62,13 +64,48 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Allowed origins come from configuration, because the dashboard does not live on
+// localhost in production and a hardcoded list means the real web app cannot call the API
+// at all. Set Cors__AllowedOrigins__0, __1, … or a comma-separated Cors__AllowedOrigins.
+//
+// Deliberately NOT AllowAnyOrigin: the dashboard sends credentials, and a wildcard origin
+// with credentials is both refused by browsers and wrong to want.
+var configuredOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? (builder.Configuration["Cors:AllowedOrigins"] ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+if (configuredOrigins.Length == 0)
+{
+    if (builder.Environment.IsDevelopment())
+    {
+        configuredOrigins = new[] { "http://localhost:3000", "http://localhost:3001" };
+    }
+    else
+    {
+        // Not a crash: an API with no browser client is a legitimate deployment, and
+        // taking the service down over it would be worse than serving no CORS headers.
+        // Said out loud at boot, because "the dashboard cannot reach the API" is otherwise
+        // diagnosed from the browser console rather than from the service that decided it.
+        Log.Warning("No Cors:AllowedOrigins configured for environment {Environment}. " +
+                    "Browser clients on other origins will be refused. Set Cors__AllowedOrigins " +
+                    "to the dashboard's origin(s) if this deployment has one.",
+                    builder.Environment.EnvironmentName);
+    }
+}
+
+// Stated at boot, because "the dashboard cannot reach the API" is otherwise diagnosed
+// from a browser console instead of from the service that made the decision.
+Log.Information("CORS allowed origins: {Origins}",
+                configuredOrigins.Length > 0 ? string.Join(", ", configuredOrigins) : "(none)");
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("DashboardPolicy", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "http://localhost:3001")
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        if (configuredOrigins.Length > 0)
+        {
+            policy.WithOrigins(configuredOrigins).AllowAnyHeader().AllowAnyMethod();
+        }
     });
 });
 
@@ -130,12 +167,79 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Database schema.
+//
+// Nothing applied migrations before this: a fresh production database had no schema at
+// all, and the failure surfaced on the first request that touched a table rather than at
+// deploy. Two ways to fix that, and which one is right depends on how you deploy:
+//
+//   `--migrate-and-exit`  applies migrations and stops. This is the one to use in a
+//                         deployment pipeline or a Kubernetes init container: schema
+//                         changes run ONCE, before any instance serves traffic, and a
+//                         failure stops the rollout instead of half-migrating under load.
+//   Database:MigrateOnStartup=true
+//                         applies them as the app boots. Convenient for a single-instance
+//                         deployment or compose; genuinely unsafe with several replicas
+//                         starting at once, which is why it is opt-in rather than default.
+//
+// The default is neither, so nothing silently rewrites a schema nobody asked it to.
+var migrateAndExit = args.Contains("--migrate-and-exit", StringComparer.OrdinalIgnoreCase);
+if (migrateAndExit || app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+{
+    using var migrationScope = app.Services.CreateScope();
+    var db = migrationScope.ServiceProvider
+        .GetRequiredService<PdfEngine.Infrastructure.Data.PdfEngineDbContext>();
+    try
+    {
+        var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+        if (pending.Count == 0)
+        {
+            Log.Information("Database schema is up to date; no migrations to apply.");
+        }
+        else
+        {
+            Log.Information("Applying {Count} pending migration(s): {Migrations}",
+                            pending.Count, string.Join(", ", pending));
+            await db.Database.MigrateAsync();
+            Log.Information("Migrations applied.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Log.Fatal(ex, "Database migration failed. The service will not start on a schema it could not verify.");
+        return 1;
+    }
+
+    if (migrateAndExit)
+    {
+        Log.Information("--migrate-and-exit: schema is current, exiting without serving.");
+        return 0;
+    }
+}
+
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Behind a load balancer or ingress the request arrives over plain HTTP from the proxy,
+// so without this the app believes every request is http:// and from the proxy's IP.
+// That makes generated absolute URLs wrong, secure-cookie decisions wrong, and every
+// rate-limit bucket collapse onto one client address — the proxy's.
+//
+// KnownNetworks/KnownProxies are cleared because in a container the proxy is not on a
+// loopback address the defaults recognise; restrict them if the proxy's address is fixed
+// and known.
+app.UseForwardedHeaders(new Microsoft.AspNetCore.Builder.ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                     | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+                     | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedHost,
+    KnownNetworks = { },
+    KnownProxies = { }
+});
 
 // PHASE 10: Prometheus Metrics
 app.UseMetricServer(); // Exposes /metrics
@@ -397,8 +501,12 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Application terminated unexpectedly.");
+    // A non-zero exit so an orchestrator sees a failed start rather than a clean one.
+    return 1;
 }
 finally
 {
     Log.CloseAndFlush();
 }
+
+return 0;

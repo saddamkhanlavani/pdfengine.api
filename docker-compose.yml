@@ -7,6 +7,12 @@ services:
     container_name: pdfengine-api
     ports:
       - "8080:8080"
+    # Measured headroom, not a guess: at MaxConcurrentRenders=2 Chromium peaks around
+    # 1.4 GB across 15-19 processes and the container totals ~2.0 GB, against ~850 MB at
+    # rest. 3 GB leaves room for the peak plus a margin; running unlimited (the previous
+    # state) means one expensive document can evict everything else on the node.
+    # Raise this in step with MaxConcurrentRenders — they scale together.
+    mem_limit: 3g
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       # Timeout=5 so an unreachable database is DISCOVERED in five seconds rather than
@@ -18,8 +24,12 @@ services:
       # Inside a container 127.0.0.1 is the container itself, so every default that
       # points at localhost has to be restated against a service name.
       AWS__ServiceURL: "http://minio:9000"
-      AWS__AccessKey: "minioadmin"
-      AWS__SecretKey: "minioadmin"
+      # Development credentials, and they are only tolerated because the environment above
+      # is Development. StartupConfigValidator refuses to start on any of these values in
+      # another environment, so a compose file copied to a server fails loudly at boot
+      # rather than running on secrets that are in the repository.
+      AWS__AccessKey: "${MINIO_ROOT_USER:-minioadmin}"
+      AWS__SecretKey: "${MINIO_ROOT_PASSWORD:-minioadmin}"
     depends_on:
       postgres:
         condition: service_started
@@ -46,8 +56,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -68,9 +78,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: pdfuser
-      POSTGRES_PASSWORD: pdfpassword
-      POSTGRES_DB: pdfengine
+      POSTGRES_USER: "${POSTGRES_USER:-pdfuser}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-pdfpassword}"
+      POSTGRES_DB: "${POSTGRES_DB:-pdfengine}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -83,6 +93,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./docker/alerts.yml:/etc/prometheus/alerts.yml
     restart: unless-stopped
 
   # PHASE 10: Grafana for Dashboards

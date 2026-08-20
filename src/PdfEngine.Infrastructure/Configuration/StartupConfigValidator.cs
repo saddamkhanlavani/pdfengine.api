@@ -57,8 +57,31 @@ public static class StartupConfigValidator
         return findings;
     }
 
-    public static void Validate(IConfiguration config)
+    /// <summary>
+    /// Values that ship in the repository. Any of these reaching a non-Development
+    /// environment means a real secret was never supplied, and the service must not start.
+    ///
+    /// Length and presence checks cannot catch this on their own: the committed JWT key is
+    /// 49 bytes of well-formed nonsense and satisfies every structural rule there is. The
+    /// only thing that distinguishes it from a real secret is that everyone with the
+    /// repository has it.
+    /// </summary>
+    private static readonly string[] KnownDevelopmentSecrets =
     {
+        "***PURGED-ROTATED-SECRET***",
+        "sk_test_your_key",
+        "minioadmin",
+        "pdfpassword",
+        "test-api-key-123",
+    };
+
+    /// <param name="environmentName">
+    /// ASPNETCORE_ENVIRONMENT. Development is allowed to run on the committed defaults —
+    /// that is what they are for — and every other environment is not.
+    /// </param>
+    public static void Validate(IConfiguration config, string? environmentName = null)
+    {
+        var isDevelopment = string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase);
         var dbConn = config.GetConnectionString("DefaultConnection");
         if (string.IsNullOrWhiteSpace(dbConn))
         {
@@ -79,6 +102,45 @@ public static class StartupConfigValidator
         if (Encoding.UTF8.GetBytes(jwtKey).Length < 32)
         {
             throw new InvalidOperationException("CRITICAL CONFIGURATION ERROR: 'Jwt:Key' must be at least 256 bits (32 bytes) long.");
+        }
+
+        // Fail CLOSED, and fail at boot. A service that starts with a publicly known
+        // signing key issues tokens anyone can forge for any tenant, including admin, and
+        // nothing about it looks wrong from the outside — which is precisely why this has
+        // to stop the process rather than log a warning somebody reads later.
+        if (!isDevelopment)
+        {
+            var exposed = new List<string>();
+            foreach (var (key, value) in new[]
+                     {
+                         ("Jwt:Key", jwtKey),
+                         ("Stripe:SecretKey", config["Stripe:SecretKey"]),
+                         ("AWS:AccessKey", config["AWS:AccessKey"]),
+                         ("AWS:SecretKey", config["AWS:SecretKey"]),
+                     })
+            {
+                if (!string.IsNullOrWhiteSpace(value)
+                    && Array.Exists(KnownDevelopmentSecrets,
+                                    known => string.Equals(known, value, StringComparison.Ordinal)))
+                {
+                    exposed.Add(key);
+                }
+            }
+
+            var connection = dbConn ?? string.Empty;
+            if (Array.Exists(KnownDevelopmentSecrets, known => connection.Contains(known, StringComparison.Ordinal)))
+            {
+                exposed.Add("ConnectionStrings:DefaultConnection");
+            }
+
+            if (exposed.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"CRITICAL CONFIGURATION ERROR: {string.Join(", ", exposed)} still hold values committed to this repository, " +
+                    $"and the environment is '{environmentName ?? "(unset)"}' rather than Development. Supply real secrets through " +
+                    "the environment (for example Jwt__Key) or a secret store. The service will not start with a signing key " +
+                    "that anyone with the source can use to forge tokens.");
+            }
         }
 
         var jwtIssuer = config["Jwt:Issuer"];

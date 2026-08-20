@@ -282,6 +282,31 @@ runs on no machine this project builds on. veraPDF's PDF/UA-1 profile implements
 Matterhorn Protocol machine checks and is what `tests/accessibility_gate.py` runs. PAC stays
 a manual pre-release step on Windows.
 
+## Release readiness — configuration and deployment
+
+The rendering engine passed every gate long before the SERVICE around it was fit to deploy.
+Five things stood between them, all configuration, none of them visible from any test that
+renders a PDF. Closed 2026-08-20, each verified against the container:
+
+| # | Was | Now |
+|---|---|---|
+| 1 | The JWT signing key was committed to the repository — anyone with the source could forge a token for any tenant, including admin | `StartupConfigValidator` refuses to start when a committed value reaches a non-Development environment. Verified: Production with the committed key exits naming `Jwt:Key`, `Stripe:SecretKey` and the connection string; Production with real secrets boots and serves |
+| 2 | `EnableDetailedErrors: true` in base config, overridden nowhere — raw exception text to callers | `false` in base, `true` only in Development |
+| 3 | CORS hardcoded to `localhost:3000/3001` — the production dashboard could not call the API | Configuration-driven, with the resolved origins logged at boot |
+| 4 | Nothing applied migrations anywhere in `src/`. A fresh database had no schema and failed on the first request that touched a table | `--migrate-and-exit` for a deploy step, `Database:MigrateOnStartup` for single-instance. Default is neither |
+| 5 | No Production config, no env matrix, compose shipping `minioadmin`/`pdfpassword` | `appsettings.Production.json` (no secrets, no hostnames), `docs/DEPLOYMENT.md`, compose reads credentials from the environment |
+
+Also done: `mem_limit: 3g` sized from the measured ~2.0 GB peak (unlimited before — one
+expensive document could evict everything on the node), `UseForwardedHeaders` so a proxied
+deployment does not collapse every rate-limit bucket onto the proxy's address, and
+`docker/alerts.yml` — five Prometheus rules, all verified as `health=ok`, built on the
+503-vs-500 split the chaos work created.
+
+**A length check cannot catch a committed secret.** The JWT key in this repository is 49
+bytes of well-formed nonsense and satisfies every structural rule there is. The only thing
+distinguishing it from a real secret is that everyone with the source has it, so the check
+has to be equality against the known values, and it has to stop the process.
+
 ## Implementation notes worth keeping
 
 **The render budget did not cover the render.** `MaxRenderDurationSeconds` was applied

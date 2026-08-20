@@ -1,0 +1,86 @@
+# Alerting rules for PDFEngine.
+#
+# Every rule here fires on a signal the chaos work (T3-7) actually produced, rather than
+# on a metric that merely exists. The engine now distinguishes "a dependency is down"
+# (503, retryable) from "the engine is broken" (500) — these rules keep that distinction
+# instead of paging one person for both.
+#
+# Load with:  rule_files: [ /etc/prometheus/alerts.yml ]
+groups:
+  - name: pdfengine-availability
+    rules:
+      # Readiness is the signal a load balancer already acts on. Alerting on it as well
+      # catches the case where EVERY replica is unready at once, which no amount of
+      # rotation can fix.
+      - alert: PdfEngineNotReady
+        expr: up{job="pdfengine"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "PDFEngine is not answering scrapes"
+          description: >-
+            No metrics for 2 minutes. Check /health/live first: if it answers, the process
+            is alive and something in front of it is not routing. If it does not, look at
+            the container, not at the dependencies — liveness consults none of them.
+
+      # A dependency outage. Deliberately NOT critical: this is designed degradation, the
+      # client is being told to retry, and the fix is usually upstream of this service.
+      - alert: PdfEngineDependencyUnavailable
+        expr: |
+          sum(rate(http_requests_received_total{code="503"}[5m]))
+            / clamp_min(sum(rate(http_requests_received_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 5% of requests are 503 (a backing service is unreachable)"
+          description: >-
+            The engine is refusing retryably because Redis, Postgres or object storage is
+            unreachable — see /health/ready for which. Rendering cannot complete without
+            the database (API-key auth) or Redis (quota); this is the engine reporting
+            that honestly rather than returning 500.
+
+      # A 500 is the engine's own fault by construction: dependency failures are 503 now.
+      # Any sustained rate here is a defect, not an outage.
+      - alert: PdfEngineServerErrors
+        expr: |
+          sum(rate(http_requests_received_total{code=~"5.."}[5m]))
+            - sum(rate(http_requests_received_total{code="503"}[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "PDFEngine is returning 5xx that are not dependency outages"
+          description: >-
+            Dependency failures are reported as 503. Anything else in the 5xx range is an
+            unhandled path in the engine — the class of bug tests/fuzz_gate.py exists to
+            find. Capture a failing request body before restarting anything.
+
+  - name: pdfengine-capacity
+    rules:
+      # Cold start measured at 4.4s to first PDF, of which 2.1s is the browser launch.
+      # A p95 far above the soak's 692ms means queueing, not slow documents.
+      - alert: PdfEngineRenderLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum(rate(pdf_generation_duration_seconds_bucket[10m])) by (le)) > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 render latency above 5s (soak baseline: p95 692ms, p99 1.07s)"
+          description: >-
+            Either documents got much heavier or renders are queueing behind
+            MaxConcurrentRenders. Check http_requests_in_progress: if it sits at the
+            concurrency limit, this is capacity and the answer is more replicas, not a
+            bigger timeout.
+
+      # Measured: ~850 MB at rest, ~2.0 GB at concurrency 2, with Chromium the bulk of it.
+      # The container limit is 3 GB, so this fires with real headroom left.
+      - alert: PdfEngineMemoryNearLimit
+        expr: |
+          container_memory_usage_bytes{name="pdfengine-api"} > 2.6e9
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "PDFEngine memory above 2.6 GB (limit 3 GB)"
+          description: >-
+            Sustained, not a spike — Chromium sawtooths by design and returns to ~850 MB at
+            rest. A floor that does not come back down is the leak signature the soak gate
+            watches for; compare against tests/evidence/soak-gate.json.

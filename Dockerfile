@@ -74,9 +74,17 @@ COPY --from=build /app/publish /app
 # node, and COPY does not restore it. The app then starts, passes every health check, and
 # fails the FIRST RENDER with "Permission denied" — a failure that looks like a Chromium
 # problem and is not. Restored here and asserted by verify-image.sh.
-RUN find /app/.playwright -type f \( -name node -o -name '*.sh' \) -exec chmod +x {} + \
-    && find /ms-playwright -type f \( -name 'chrome' -o -name 'headless_shell' \
-       -o -name '*.sh' \) -exec chmod +x {} +
+# Asserts the OUTCOME rather than trusting the chmod's exit code: the thing that matters
+# is that the driver's node is executable when the first render runs, and a build that
+# reports success while leaving it unset is exactly the failure this step exists to stop.
+RUN set -eux; \
+    find /app/.playwright -type f \( -name node -o -name '*.sh' \) -exec chmod +x {} + || true; \
+    find /ms-playwright -type f \( -name 'chrome' -o -name 'headless_shell' -o -name '*.sh' \) \
+        -exec chmod +x {} + || true; \
+    node_bin="$(find /app/.playwright/node -name node -type f | head -1)"; \
+    test -n "$node_bin" || { echo "no Playwright driver node in the image"; exit 1; }; \
+    test -x "$node_bin" || { echo "driver node is not executable: $node_bin"; exit 1; }; \
+    echo "driver node executable: $node_bin"
 
 # The engine resolves its own fonts from /app/Fonts for PdfSharpCore. Chromium does not
 # use that resolver — it asks fontconfig — so the same faces are installed system-wide.
