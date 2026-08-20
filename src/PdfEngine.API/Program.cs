@@ -120,7 +120,27 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+            // Resolved from configuration on EVERY validation, not captured once here.
+            //
+            // Tokens are SIGNED by reading _configuration["Jwt:Key"] at request time, so a
+            // key captured at startup drifts the moment configuration changes — and
+            // ASP.NET Core watches appsettings files with reloadOnChange by default, so
+            // that happens without anyone restarting anything. The symptom is brutal to
+            // diagnose from the outside: login returns 200 with a valid-looking token and
+            // the very next request is 401, because the token was signed with the new key
+            // and checked against the old one. Observed exactly that after rotating the
+            // development key under a running process.
+            //
+            // Resolving here means signing and validation always read the same value, so
+            // rotating the key takes effect immediately instead of silently logging
+            // everyone out until someone restarts the service.
+            IssuerSigningKeyResolver = (_, _, _, _) =>
+            {
+                var current = builder.Configuration["Jwt:Key"];
+                return string.IsNullOrEmpty(current)
+                    ? Array.Empty<SecurityKey>()
+                    : new SecurityKey[] { new SymmetricSecurityKey(Encoding.UTF8.GetBytes(current)) };
+            }
         };
     });
 builder.Services.AddAuthorization();
