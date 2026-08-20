@@ -40,6 +40,8 @@ public class PdfRenderWorker : BackgroundService
         _webhookService = webhookService;
     }
 
+    private int _consecutiveDequeueFailures;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("PdfRenderWorker started.");
@@ -55,6 +57,27 @@ public class PdfRenderWorker : BackgroundService
             {
                 break;
             }
+            catch (Exception ex)
+            {
+                // The queue is Redis, and Redis restarts. This catch used to cover only
+                // cancellation, so a connection failure escaped ExecuteAsync, faulted the
+                // BackgroundService, and .NET's default StopHost behaviour shut the entire
+                // API down — every tenant's synchronous rendering included, none of which
+                // needs the queue. Measured by tests/chaos_gate.py: the container exited
+                // with code 0 while a dependency was unreachable.
+                //
+                // Backing off matters as much as catching: without it this loop spins on a
+                // failing connection and floods the log faster than the outage resolves.
+                _consecutiveDequeueFailures++;
+                var backoff = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, Math.Min(5, _consecutiveDequeueFailures))));
+                _logger.LogError(ex,
+                    "Could not read from the job queue (failure {Count}); retrying in {Backoff}s. Queued jobs are delayed; synchronous rendering is unaffected.",
+                    _consecutiveDequeueFailures, backoff.TotalSeconds);
+                try { await Task.Delay(backoff, stoppingToken); } catch (OperationCanceledException) { break; }
+                continue;
+            }
+
+            _consecutiveDequeueFailures = 0;
 
             try
             {

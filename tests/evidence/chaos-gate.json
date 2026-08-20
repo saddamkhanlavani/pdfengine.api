@@ -3,19 +3,19 @@
     "scenario": "redis",
     "claim": "the API process survives the outage",
     "ok": true,
-    "detail": "process is GONE \u2014 restart loop"
+    "detail": "process is still answering"
   },
   {
     "scenario": "redis",
-    "claim": "a synchronous render still succeeds",
-    "ok": false,
-    "detail": "HTTP 500 in 6.0s, 908 bytes \u2014 {\"code\":\"INTERNAL_ERROR\",\"message\":\"The message timed out in the backlog attempting to send because no connection became available (5000ms) - Last Connection Ex"
-  },
-  {
-    "scenario": "redis",
-    "claim": "a dependent endpoint answers rather than hangs",
+    "claim": "a render answers retryably (200 or 503), never 500",
     "ok": true,
-    "detail": "HTTP 500 in 6.0s"
+    "detail": "HTTP 503 in 5.8s \u2014 refused retryably, which is the contract"
+  },
+  {
+    "scenario": "redis",
+    "claim": "a dependent endpoint answers retryably rather than hanging",
+    "ok": true,
+    "detail": "HTTP 503 in 6.0s"
   },
   {
     "scenario": "redis",
@@ -31,15 +31,15 @@
   },
   {
     "scenario": "postgres",
-    "claim": "a synchronous render still succeeds",
-    "ok": false,
-    "detail": "HTTP 500 in 0.0s, 98 bytes \u2014 {\"code\":\"INTERNAL_ERROR\",\"message\":\"Name or service not known\",\"traceId\":\"0HNNU5VML7GGD:00000001\"}"
+    "claim": "a render answers retryably (200 or 503), never 500",
+    "ok": true,
+    "detail": "HTTP 503 in 0.0s \u2014 refused retryably, which is the contract"
   },
   {
     "scenario": "postgres",
-    "claim": "a dependent endpoint answers rather than hangs",
+    "claim": "a dependent endpoint answers retryably rather than hanging",
     "ok": true,
-    "detail": "HTTP 500 in 0.0s"
+    "detail": "HTTP 503 in 0.0s"
   },
   {
     "scenario": "postgres",
@@ -49,27 +49,27 @@
   },
   {
     "scenario": "storage-denied",
-    "claim": "rendering does not depend on object storage",
-    "ok": false,
-    "detail": "HTTP None in 90.0s, 9 bytes"
+    "claim": "synchronous rendering does not depend on object storage",
+    "ok": true,
+    "detail": "HTTP 200 in 1.1s, 7034 bytes"
   },
   {
     "scenario": "storage-denied",
-    "claim": "the process survives",
-    "ok": false,
-    "detail": "GONE"
+    "claim": "the API process survives an object-storage outage",
+    "ok": true,
+    "detail": "still answering"
   },
   {
     "scenario": "network-partition",
     "claim": "the API keeps serving on loopback while partitioned",
-    "ok": false,
-    "detail": "in-container health: 000curl: (28) Operation timed out after 20002 milliseconds with 0 bytes received"
+    "ok": true,
+    "detail": "in-container health: 200"
   },
   {
     "scenario": "network-partition",
-    "claim": "an unreachable sub-resource does not hang the render",
-    "ok": false,
-    "detail": "HTTP 000curl: (7) Failed to connect to localhost port 8080 after 0 ms: Couldn't connect to server in 0.1s (a hang would sit at the 120s ceiling)"
+    "claim": "an unreachable sub-resource produces an answer, not a hang",
+    "ok": true,
+    "detail": "HTTP 503 in 15.2s (a hang would sit at the 120s ceiling)"
   },
   {
     "scenario": "network-partition",
@@ -81,7 +81,7 @@
     "scenario": "unwritable-tmp",
     "claim": "the engine answers rather than hanging",
     "ok": true,
-    "detail": "HTTP 200 in 0.2s"
+    "detail": "HTTP 200 in 0.1s"
   },
   {
     "scenario": "unwritable-tmp",

@@ -9,7 +9,11 @@ services:
       - "8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__DefaultConnection: "Host=postgres;Database=pdfengine;Username=pdfuser;Password=pdfpassword"
+      # Timeout=5 so an unreachable database is DISCOVERED in five seconds rather than
+      # thirty. Measured by tests/chaos_gate.py: under a full network partition the
+      # engine answered correctly (503) but took 30.2s to do it, which is a client
+      # timeout for most callers and a pile-up of held connections for us.
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=pdfengine;Username=pdfuser;Password=pdfpassword;Timeout=5;Command Timeout=15"
       Redis__ConnectionString: "redis:6379,abortConnect=false"
       # Inside a container 127.0.0.1 is the container itself, so every default that
       # points at localhost has to be restated against a service name.

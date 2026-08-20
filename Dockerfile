@@ -104,6 +104,8 @@ WORKDIR /app
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD curl -fsS http://localhost:8080/health || exit 1
+    # /health/live, deliberately: this decides whether the container is KILLED, and a
+# dependency being unreachable is not a reason to kill a working engine.
+CMD curl -fsS -m 5 http://localhost:8080/health/live || exit 1
 
 ENTRYPOINT ["dotnet", "PdfEngine.API.dll"]

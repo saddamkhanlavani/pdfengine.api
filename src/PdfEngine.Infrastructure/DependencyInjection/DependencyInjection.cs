@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using PdfEngine.Application.Configurations;
 using PdfEngine.Application.Interfaces;
@@ -68,6 +69,18 @@ public static class DependencyInjection
         services.AddScoped<IBillingService, PdfEngine.Infrastructure.Services.BillingService>();
         services.AddScoped<IApiKeyService, ApiKeyService>();
         services.AddScoped<ITenantEntitlementService, TenantEntitlementService>();
+        // Since .NET 6 an unhandled exception in a BackgroundService stops the HOST by
+        // default. That default is right for a worker process whose only job is the
+        // worker; it is wrong here, where the background workers are secondary and the
+        // API's primary job — synchronous rendering — needs none of them. Measured by
+        // tests/chaos_gate.py: an unreachable dependency took the whole API down.
+        //
+        // Each worker also catches its own exceptions and backs off. This is the second
+        // line: a path nobody guarded must degrade to "that worker stopped", never to
+        // "the service stopped".
+        services.Configure<HostOptions>(options =>
+            options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+
         services.AddHostedService<BillingWorker>();
         services.AddHostedService<PdfRenderWorker>();
         services.AddHostedService<MetricsWorker>();
@@ -107,7 +120,17 @@ public static class DependencyInjection
             {
                 ServiceURL = configuration["AWS:ServiceURL"],
                 ForcePathStyle = configuration.GetValue<bool>("AWS:ForcePathStyle", true),
-                UseHttp = configuration["AWS:ServiceURL"]?.StartsWith("http://") == true
+                UseHttp = configuration["AWS:ServiceURL"]?.StartsWith("http://") == true,
+                // The AWS SDK defaults to a 100-second timeout with 4 retries, which is
+                // sized for a transient network hiccup talking to a bucket that exists.
+                // Against a bucket that is DOWN it means one request waits minutes.
+                // Measured by tests/chaos_gate.py: with MinIO stopped a render that
+                // normally takes 0.3s took 68.9 SECONDS and still succeeded — long past
+                // any client's own timeout, while holding a tenant render slot the whole
+                // time. Storage is not on the critical path for a synchronous render, so
+                // it gets a short leash.
+                Timeout = TimeSpan.FromSeconds(5),
+                MaxErrorRetry = 1
             };
             
             var credentials = new Amazon.Runtime.BasicAWSCredentials(

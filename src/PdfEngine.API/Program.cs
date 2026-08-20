@@ -93,9 +93,26 @@ PdfEngine.Application.DependencyInjection.AddApplication(builder.Services);
 PdfEngine.Infrastructure.DependencyInjection.DependencyInjection.AddInfrastructure(builder.Services, builder.Configuration);
 
 // PHASE 10: Health Checks
+// Liveness and readiness are different questions and must not share an endpoint.
+//
+// LIVENESS  is "should this container be killed and restarted?" — and the answer is never
+//           yes because a dependency is down. Measured by tests/chaos_gate.py: with MinIO
+//           stopped, /health did not answer within 25 SECONDS because the S3 check has no
+//           timeout of its own. A Kubernetes liveness probe pointed at that kills a
+//           perfectly healthy container, so a ten-second bucket blip becomes a restart
+//           loop across every replica at once.
+// READINESS is "should traffic be sent here?" — that one legitimately depends on Redis,
+//           Postgres and the bucket.
+//
+// Every dependency check is also tagged "ready" and given its own timeout, so a hung
+// dependency can never hold the endpoint open.
 builder.Services.AddHealthChecks()
-    .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection")!)
-    .AddRedis(builder.Configuration["Redis:ConnectionString"]!)
+    .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection")!,
+               name: "PostgreSQL", tags: new[] { "ready" },
+               timeout: TimeSpan.FromSeconds(3))
+    .AddRedis(builder.Configuration["Redis:ConnectionString"]!,
+              name: "Redis", tags: new[] { "ready" },
+              timeout: TimeSpan.FromSeconds(3))
     .AddS3(options =>
     {
         options.S3Config = new Amazon.S3.AmazonS3Config
@@ -109,7 +126,7 @@ builder.Services.AddHealthChecks()
             builder.Configuration["AWS:SecretKey"] ?? "minioadmin"
         );
         options.BucketName = builder.Configuration["AWS:BucketName"] ?? "pdf-storage";
-    }, name: "S3 Storage");
+    }, name: "S3 Storage", tags: new[] { "ready" }, timeout: TimeSpan.FromSeconds(3));
 
 var app = builder.Build();
 
@@ -140,7 +157,23 @@ app.UseMiddleware<RateLimitingMiddleware>();
 app.MapControllers();
 
 // PHASE 10: Health Check Endpoint
+// Unfiltered: the full picture, for a human or a dashboard.
 app.MapHealthChecks("/health");
+
+// Liveness: no dependency is consulted, so this answers immediately even when every
+// backing service is unreachable. Point the container/orchestrator liveness probe HERE.
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+});
+
+// Readiness: the dependencies, each bounded by its own timeout. Point the load balancer
+// and the orchestrator's readiness probe here — being unready removes this replica from
+// rotation, which is the correct response to a dependency outage. Killing it is not.
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
 
 // Custom Startup Diagnostics Health Endpoint
 app.MapGet("/health/startup", async (

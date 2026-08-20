@@ -109,6 +109,12 @@ public class PdfController : ControllerBase
             ErrorCodes.RequestAborted => BadRequest(errorResponse),
             ErrorCodes.RenderTimeout => StatusCode(408, errorResponse),
             ErrorCodes.BrowserUnavailable => StatusCode(503, errorResponse),
+            // 503 + Retry-After, not 500. A dependency being down is not the engine being
+            // broken, and the difference decides what the caller does: a 500 gets escalated
+            // to a human, a 503 with a Retry-After gets retried by the client that already
+            // knows how. Measured by tests/chaos_gate.py, which found both Redis and
+            // Postgres outages surfacing as INTERNAL_ERROR.
+            ErrorCodes.DependencyUnavailable => ServiceUnavailable(errorResponse),
             ErrorCodes.QuotaExceeded => StatusCode(429, errorResponse),
             ErrorCodes.BlockedUrl => BadRequest(errorResponse),
             _ => StatusCode(500, errorResponse)
@@ -185,5 +191,12 @@ public class PdfController : ControllerBase
             ErrorCodes.Validation => BadRequest(errorResponse),
             _ => StatusCode(500, errorResponse)
         };
+    }
+
+    /// <summary>503 with the Retry-After a client needs to back off correctly.</summary>
+    private IActionResult ServiceUnavailable(object body)
+    {
+        Response.Headers["Retry-After"] = "10";
+        return StatusCode(503, body);
     }
 }

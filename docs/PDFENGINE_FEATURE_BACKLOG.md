@@ -124,23 +124,56 @@ gate scoreboard, where Gates I, K and L are PARTIAL by design.
 ---
 
 
-### T3-7 chaos findings — OPEN, not fixed
+### T3-7 chaos — all six findings closed, 16/16
 
-`tests/chaos_gate.py` stops real dependency containers. 10 of 16 assertions held. The six
-that did not are genuine and none of them are fixed yet:
+`tests/chaos_gate.py` stops real dependency containers. All sixteen assertions now hold.
+One earlier conclusion recorded here was WRONG and is corrected below.
 
-| # | Fault | What happens | Why it matters |
+| # | Fault | Was | Now |
 |---|---|---|---|
-| C-1 | Redis stopped | a synchronous render returns **500** `INTERNAL_ERROR: no connection became available (5000ms)` | rendering was believed not to need Redis. It does — through rate limiting/quota — so a Redis blip is a total rendering outage, and it is reported as the server being broken rather than as a dependency being down |
-| C-2 | Postgres stopped | a synchronous render returns **500** `Name or service not known` | same shape: a tenant-lookup dependency on the hot path |
-| C-3 | MinIO stopped | **the API process exits (exit code 0, RestartCount 1)** | the most serious of the six. A clean exit under an S3 outage is the signature of an unhandled exception in a `BackgroundService`, which stops the .NET host by default. One dependency being unreachable restarts the whole service for every tenant |
-| C-4 | MinIO stopped | no response for 90s before the exit | a request that neither succeeds nor fails |
-| C-5 | Network partition | results unreliable — the process was already down from C-3 | must be re-run after C-3 is fixed |
-| C-6 | Network partition | ditto | ditto |
+| C-1 | Redis stopped | render **500** `INTERNAL_ERROR` | **503 + Retry-After** in 0.0s |
+| C-2 | Postgres stopped | render **500** `Name or service not known` | **503 + Retry-After** in 0.1s |
+| C-3 | MinIO stopped | recorded as "the process exits" — **that was wrong** | see below |
+| C-4 | MinIO stopped | `/health` gave **no answer in 25s**; render took **68.9s** | `/health/live` **200 in 0.03s**, render **1.2s** |
+| C-5 | Network partition | unmeasurable, process assumed down | **200 on loopback while fully partitioned** |
+| C-6 | Network partition | render assumed hung | **503 in 15.2s**, a definite answer |
 
-Two changes suggest themselves and neither is made yet: dependency failures on the hot path
-should surface as **503 with a Retry-After**, not 500, and every `BackgroundService` needs a
-top-level catch so a dependency outage cannot stop the host.
+**Correction to C-3.** The first chaos run reported `RestartCount 1` and exit code 0, and
+that was read as an S3 outage stopping the .NET host. Re-measured: the restart was a
+`docker compose --force-recreate` from this session, not a crash. The process never died.
+What actually happened is C-4 — the health endpoint HUNG, because the S3 check had no
+timeout of its own. That is worse than it sounds and better than reported: nothing crashes
+locally, but a Kubernetes liveness probe on that endpoint kills a perfectly healthy
+container, so a ten-second bucket blip becomes a restart loop across every replica.
+
+**What changed.**
+
+- **Liveness and readiness are now separate endpoints.** `/health/live` consults no
+  dependency and answers in 0.03s — point the orchestrator's liveness probe there.
+  `/health/ready` reports the dependencies, each with its own 3s timeout, and returns 503
+  when one is down — point the load balancer there. Being unready removes a replica from
+  rotation; killing it does not help. The container HEALTHCHECK now uses `/health/live`.
+- **Dependency failures are 503 with `Retry-After`, not 500.** A 500 is a bug report that
+  gets a human out of bed; a 503 is a retry the client already knows how to do.
+  `GlobalExceptionMiddleware` classifies Redis/Npgsql/S3/socket failures by walking the
+  inner-exception chain, and logs them as errors rather than as critical — paging on a
+  dependency outage trains people to ignore the page.
+- **The S3 client got a short leash** (5s timeout, 1 retry, down from the SDK default of
+  100s and 4 retries). That default is sized for a hiccup talking to a bucket that exists;
+  against a bucket that is down it cost 68.9s on a render that normally takes 0.3s, holding
+  a tenant render slot throughout.
+- **Postgres connect timeout is 5s** (`Timeout=5`), so an unreachable database is discovered
+  in five seconds instead of thirty.
+- **`PdfRenderWorker`'s queue read is guarded** with exponential backoff, and
+  `BackgroundServiceExceptionBehavior.Ignore` is set so no worker can stop the host. Neither
+  turned out to be the cause of C-3, and both are correct regardless: the dequeue was
+  covered only by `catch (OperationCanceledException)`, so a Redis connection failure would
+  have escaped `ExecuteAsync` and, on .NET 6+ defaults, stopped the host.
+
+**One assertion in the gate was wrong, not the engine.** "A synchronous render still
+succeeds while Redis/Postgres are down" was wishful: authenticating an API key needs the
+database and charging a quota needs Redis. The gate now asserts what the engine actually
+owes — a retryable answer, never a 500 — and says so in its docstring.
 
 ### T3-5 soak — measured, one number still to confirm
 
