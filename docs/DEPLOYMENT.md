@@ -165,12 +165,48 @@ docker exec -i pdfengine-postgres pg_restore -U pdfuser -d pdfengine --clean < p
 Take it on a schedule, store it off the host, and **restore it somewhere at least once** —
 an untested backup is a belief, not a backup.
 
+**Verified, not assumed.** The procedure above was exercised on 2026-08-20: dump taken,
+restored into a separate database, row counts compared. `pg_restore` reported 0 errors and
+all 32 tables and every count matched (Tenants 28, Users 31, ApiKeys 58, PdfJobs 47,226,
+UsageRecords 49,571). Do this again on your own infrastructure — a backup verified on a
+developer's machine says nothing about a backup taken by your scheduler.
+
+**The drill found something the gates never could.** The dump was **666 MB**, because
+`PdfJobs.EncryptedHtmlContent` held **770 MB of submitted HTML across 47,226 jobs** and
+nothing ever removed it. `TenantEntitlement.RetentionDays` existed as a field with no code
+enforcing it. That is unbounded backup growth and indefinite retention of customer content
+that may contain personal data. See §10.
+
 **Object storage** — rendered PDFs for asynchronous jobs. Whether this needs backing up is a
 product decision: if job results are retrievable for a limited window and callers can
 re-render, replication may be enough. Decide it explicitly rather than by default.
 
 Redis holds the job queue and rate-limit counters. It does not need backing up — losing it
 loses queued jobs, which is an availability event, not a data-loss one.
+
+---
+
+## 10. Retention
+
+`TenantEntitlement.RetentionDays` is now enforced by `BillingWorker`, and it is **off by
+default**. A service should not start deleting customer data because it was upgraded.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `Retention__Enabled` | `false` | Nothing is removed until this is on |
+| `Retention__DefaultDays` | `90` | Window for tenants with no `RetentionDays` entitlement |
+| `Retention__DeleteJobRows` | `false` | Payload-only by default; `true` removes whole rows |
+| `Retention__BatchSize` | `5000` | Per tenant, per pass (every 12 hours) |
+
+**Payload-only is the default on purpose.** The job row survives — status, timings, usage
+and audit history are what invoices and support questions are answered from — and only the
+submitted content is cleared, which is the part that is both large and sensitive.
+
+Verified against a restored copy of a real database: with a 30-day window, 787 jobs were
+cleared, storage fell from **770 MB to 450 MB**, and all 47,226 job rows remained. Every
+pass logs what it decided even when it changes nothing, because a retention job that is
+silently a no-op looks exactly like one that is working until someone asks why the database
+never shrinks.
 
 ---
 

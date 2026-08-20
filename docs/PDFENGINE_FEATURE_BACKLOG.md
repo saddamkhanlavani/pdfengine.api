@@ -290,7 +290,7 @@ renders a PDF. Closed 2026-08-20, each verified against the container:
 
 | # | Was | Now |
 |---|---|---|
-| 1 | The JWT signing key was committed to the repository — anyone with the source could forge a token for any tenant, including admin | `StartupConfigValidator` refuses to start when a committed value reaches a non-Development environment. Verified: Production with the committed key exits naming `Jwt:Key`, `Stripe:SecretKey` and the connection string; Production with real secrets boots and serves |
+| 1 | The JWT signing key was committed to the repository — anyone with the source could forge a token for any tenant, including admin | **Removed from tracked config**, not merely rejected: `Jwt:Key`, `Stripe:SecretKey` and the connection string now live only in `appsettings.Development.json`, and `StartupConfigValidator` refuses to start when a committed value or an empty required value reaches a non-Development environment. Verified all three ways: Production with nothing supplied exits, Production with the committed key exits naming it, Production with real secrets boots and serves. `tests/secrets_gate.py` scans git's index so it cannot come back |
 | 2 | `EnableDetailedErrors: true` in base config, overridden nowhere — raw exception text to callers | `false` in base, `true` only in Development |
 | 3 | CORS hardcoded to `localhost:3000/3001` — the production dashboard could not call the API | Configuration-driven, with the resolved origins logged at boot |
 | 4 | Nothing applied migrations anywhere in `src/`. A fresh database had no schema and failed on the first request that touched a table | `--migrate-and-exit` for a deploy step, `Database:MigrateOnStartup` for single-instance. Default is neither |
@@ -308,6 +308,29 @@ distinguishing it from a real secret is that everyone with the source has it, so
 has to be equality against the known values, and it has to stop the process.
 
 ## Implementation notes worth keeping
+
+**Rejecting a secret is not removing it.** The validator was written to refuse the committed
+JWT key outside Development, and that was reported as the blocker being closed while the key
+was still sitting in `appsettings.json` at HEAD. Two different jobs: refuse to RUN on it, and
+do not SHIP it. `tests/secrets_gate.py` now scans git's index rather than the working tree,
+because a secret that is only untracked is one `git add -A` away from being committed — and
+it found a live one on its first run, a database password still hardcoded in the compose
+file's connection string.
+
+**The backup drill paid for itself immediately.** Exercising the documented restore found a
+666 MB dump, which turned out to be 770 MB of submitted HTML across 47,226 job rows that
+nothing ever removed: `TenantEntitlement.RetentionDays` existed as a field with no code
+behind it. Unbounded backup growth and indefinite retention of customer content, invisible
+to every gate, because gates render documents and this is about what happens to them
+afterwards. An untested backup is a belief.
+
+**Retention shipped with two runtime bugs that both compiled cleanly.** `ExecuteUpdate`/
+`ExecuteDelete` reject `Take()` in EF Core 8 — it throws at runtime, so the obvious
+single-query batching version compiles and fails the first night it runs unattended. And
+clearing the payload to `null` violates a NOT NULL constraint the entity model does not
+express. Both were found by pointing the worker at a restored copy of a real database; the
+code review that preceded it found neither.
+
 
 **The render budget did not cover the render.** `MaxRenderDurationSeconds` was applied
 inside the attempt loop, and the pagination planner runs BEFORE it. A 24 MB SVG found by the

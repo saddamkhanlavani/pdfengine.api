@@ -1,5 +1,5 @@
 {
-  "seed": 1015507148,
+  "seed": 55626515,
   "cases": 60,
   "families": [
     "bomb",
@@ -9,11 +9,11 @@
     "pdf",
     "ssrf"
   ],
-  "duration_s": 38.6,
+  "duration_s": 53.2,
   "stats": {
     "sent": 60,
-    "ok": 40,
-    "rejected": 20,
+    "ok": 38,
+    "rejected": 22,
     "server_error": 0,
     "timeout": 0,
     "dead": 0

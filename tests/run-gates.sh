@@ -188,6 +188,14 @@ else
     echo "  veraPDF not found at $VERAPDF — set VERAPDF_BIN. SKIPPING (not a pass)."
     record "Gate H PDF/A + PDF/UA" SKIP "veraPDF not installed"; SKIPPED=$((SKIPPED+1))
   fi
+  # Committed secrets. Cheap, and it caught a real one on its first run.
+  banner "SECRETS: values that must come from the environment"
+  if python3 tests/secrets_gate.py 2>&1 | tee "$EVIDENCE/secrets-gate.log" | tail -3; then
+    record "Committed secrets" PASS "no secret values in tracked config"
+  else
+    record "Committed secrets" FAIL "a secret is present in a tracked all-environment file"; FAILED=$((FAILED+1))
+  fi
+
   # Tier 2 output features — attachments, signatures, forms, page ops, print production
   banner "OUTPUT: Tier 2 PDF output features"
   if [[ -x "$VERAPDF" ]]; then

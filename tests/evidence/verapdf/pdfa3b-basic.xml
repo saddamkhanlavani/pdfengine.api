@@ -8,18 +8,18 @@
   <jobs>
     <job>
       <item size="39745">
-        <name>/var/folders/8t/zzdh0lyx5r9fxy23jby9yh4w0000gn/T/tmpufjzno_7/d.pdf</name>
+        <name>/var/folders/8t/zzdh0lyx5r9fxy23jby9yh4w0000gn/T/tmpqrjdwnko/d.pdf</name>
       </item>
       <validationReport jobEndStatus="normal" profileName="PDF/A-3b validation profile" statement="PDF file is compliant with Validation Profile requirements." isCompliant="true">
         <details passedRules="146" failedRules="0" passedChecks="1195" failedChecks="0"></details>
       </validationReport>
-      <duration start="1787240414889" finish="1787240415178">00:00:00.289</duration>
+      <duration start="1787247387068" finish="1787247387344">00:00:00.276</duration>
     </job>
   </jobs>
   <batchSummary totalJobs="1" failedToParse="0" encrypted="0" outOfMemory="0" veraExceptions="0">
     <validationReports compliant="1" nonCompliant="0" failedJobs="0">1</validationReports>
     <featureReports failedJobs="0">0</featureReports>
     <repairReports failedJobs="0">0</repairReports>
-    <duration start="1787240414855" finish="1787240415191">00:00:00.336</duration>
+    <duration start="1787247387045" finish="1787247387360">00:00:00.315</duration>
   </batchSummary>
 </report>
