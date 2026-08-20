@@ -78,6 +78,53 @@ opt-in.
 
 ---
 
+## 3a. First run — the whole sequence, executed
+
+Run end-to-end on 2026-08-20 against an empty database and a Production container. Every
+step below produced the result shown.
+
+```bash
+# 1. Schema. 22 migrations, 0 -> 32 tables, exit 0.
+docker run --rm \
+  -e ASPNETCORE_ENVIRONMENT=Production \
+  -e ConnectionStrings__DefaultConnection="…" \
+  -e Redis__ConnectionString="…" -e Jwt__Key="…" \
+  pdfengine:local dotnet PdfEngine.API.dll --migrate-and-exit
+
+# 2. Start the service. Live in ~20s.
+#    /health/live 200, /health/ready reflects the dependencies.
+
+# 3. Create the first account. There is no seeded tenant, user or API key in
+#    Production — the development seed is gated to Development, and a dev key is
+#    correctly refused with 401.
+curl -X POST https://…/api/v1/auth/register -H 'Content-Type: application/json' \
+  -d '{"email":"…","password":"…","companyName":"…","fullName":"…"}'
+
+# 4. Log in, then mint an API key.
+curl -X POST https://…/api/v1/auth/login -d '{"email":"…","password":"…"}'
+curl -X POST https://…/api/v1/account/keys -H "Authorization: Bearer $TOKEN" \
+  -d '{"name":"first-key"}'
+# -> { "id", "name", "key": "pk_live_…", "created", "environment", "status" }
+#    The plaintext key is returned ONCE. Store it now.
+
+# 5. Render.
+curl -X POST https://…/api/v1/pdf/generate -H "X-Api-Key: pk_live_…" \
+  -d '{"documentName":"first","documentType":4,"html":"<h1>Hello</h1>"}'
+# -> 200, a 1-page PDF
+```
+
+Two things this drill demonstrated that are easy to mistake for faults:
+
+- **`/health/ready` returning 503 on a new deployment is usually correct.** During the drill
+  it was 503 because the S3 credentials supplied were not real — `The Access Key Id you
+  provided does not exist in our records`. The check found a genuinely misconfigured
+  dependency before any traffic did.
+- **A migration failure exits 1 and applies nothing.** Verified: a wrong database password
+  produced `28P01: password authentication failed`, exit code 1, and 0 tables created. A
+  rollout stops rather than half-migrating.
+
+---
+
 ## 4. Health probes — point them at the right endpoints
 
 | Endpoint | Consults dependencies | Point this at |
