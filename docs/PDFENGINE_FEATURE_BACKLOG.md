@@ -236,13 +236,24 @@ fonts get the `/CIDToGIDMap` ISO 32000-1 Table 117 requires. Measured with veraP
 | tagged + running header | 1553 / 2 | **1560 / 0** |
 | tagged + watermark | 1523 / 2 | **1530 / 0** |
 | tagged + header + watermark | not measured | **1598 / 0** |
-| tagged + footnote | 1625 / 8 | 1626 / 7 — still fails, deliberately |
+| tagged + footnote | 1625 / 8 | **1647 / 0** |
 | tagged + Chromium headerTemplate | 1571 / 3 | 1571 / 3 — upstream |
 
-Footnotes are **not** artifact-marked. A footnote is content the reader is meant to read;
-declaring it furniture would turn 7 failed checks into 0 while hiding the footnote from the
-screen reader it exists for. Conformance there needs real `/Note` structure elements, which
-is open work. Chromium's own `headerTemplate` is drawn untagged inside Chromium's content
+Footnotes are **not** artifact-marked, and that was the whole difficulty. Declaring the band
+furniture would have turned 7 failed checks into 0 while hiding the footnote from the screen
+reader it exists for. It is a real `/Note` structure element instead, which means keeping
+four things consistent: the drawing wrapped in `/Note <</MCID n>> BDC … EMC` with an n unused
+on that page, a `/StructElem` of subtype `/Note` pointing at the page and that MCID, that
+element parented into the document hierarchy, and the page's ParentTree entry extended so
+index n resolves back to it. Miss the fourth and the tree looks right in a dump while
+assistive technology cannot walk from the mark to its element — worse than untagged, because
+it reads as tagged.
+
+Verified beyond veraPDF's verdict: the Note is a child of the document element, the
+ParentTree slot for its MCID resolves back to the Note, the marked-content block opens and
+closes in the page stream, the footnote text still extracts, and `/Artifact` appears nowhere
+in it. The eight footnote typesetting cases (T1-5a…h) still pass, so the tagging did not
+disturb the layout. Chromium's own `headerTemplate` is drawn untagged inside Chromium's content
 stream with no hook to change it — `@page` margin boxes are the conformant route and the
 engine now says so in the warning.
 

@@ -75,11 +75,12 @@ CASES = [
     ("tagged + PDF/A-2b", doc(), {"pdfaCompliance": "PDF/A-2b"}, True),
     ("tagged + PDF/A-2b + running header",
      doc(page_css=HEADER_CSS), {"pdfaCompliance": "PDF/A-2b"}, True),
-    # Asserted to FAIL. Making this pass by artifact-marking the footnote would hide it
-    # from assistive technology; the honest state is a failing check and a warning that
-    # says so. Flip this to True only when real /Note structure elements exist.
-    ("tagged + footnote (KNOWN: real content, not yet in the structure tree)",
-     doc(extra_css=".fn { float: footnote }", footnote=True), {}, False),
+    # Conformant since the footnote band became a real /Note structure element. It was
+    # NOT made to pass by artifact-marking the band — that would have hidden the footnote
+    # from the screen reader it exists for. Verified beyond veraPDF: the Note is a child of
+    # the document element, the page's ParentTree resolves its MCID back to it, and the
+    # text still extracts.
+    ("tagged + footnote", doc(extra_css=".fn { float: footnote }", footnote=True), {}, True),
     # Chromium draws its own header/footer untagged inside its content stream and offers
     # no hook to change it. The engine's @page margin boxes are the conformant route.
     ("tagged + Chromium headerTemplate (KNOWN: upstream, untagged)",

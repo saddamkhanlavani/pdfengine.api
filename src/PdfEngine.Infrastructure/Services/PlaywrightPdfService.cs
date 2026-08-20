@@ -1335,13 +1335,15 @@ public class PlaywrightPdfService : IPdfService
                 // Footnotes and page floats are NOT artifacts. A footnote is content the
                 // reader is meant to read, and marking it an artifact would satisfy the
                 // validator while hiding the footnote from the screen reader it exists
-                // for — a worse document that passes a better test. Making them conformant
-                // means adding real /Note structure elements, which is not done yet, so it
-                // is reported. Measured: tagged + footnote fails 7 checks of clause 7.1.
+                // for — a worse document that passes a better test. The band is therefore
+                // a real /Note structure element instead, joined to the tree with its own
+                // ParentTree entry: measured 1647/0, conformant. Page floats are still
+                // untagged and are still reported.
                 if (command.Options.GenerateTaggedPdf)
                 {
                     var untagged = new List<string>();
-                    if (renderingContext.Plan.Footnotes.Count > 0) untagged.Add("footnotes");
+                    // Footnotes are NOT listed: the band is a real /Note in the structure
+                    // tree now, so tagged + footnote is conformant — measured 1647/0.
                     if (renderingContext.Plan.PageFloats.Count > 0) untagged.Add("page floats");
                     if (command.Options.DisplayHeaderFooter
                         && (!string.IsNullOrEmpty(command.Options.HeaderTemplate)
@@ -1357,7 +1359,7 @@ public class PlaywrightPdfService : IPdfService
                     if (untagged.Count > 0)
                     {
                         command.Diagnostics.Warnings.Add(
-                            $"Accessibility warning: this document requests tagged (PDF/UA) output AND uses {string.Join(", ", untagged)}, which is not in the structure tree. The document will NOT pass PDF/UA-1 validation (measured with veraPDF 1.30.2: a footnote costs 7 checks of clause 7.1, Chromium's header/footer 3). Running headers via @page margin boxes and watermarks are unaffected — those are declared as artifacts and remain conformant.");
+                            $"Accessibility warning: this document requests tagged (PDF/UA) output AND uses {string.Join(", ", untagged)}, which is not in the structure tree, so the document will NOT pass PDF/UA-1 validation (measured with veraPDF 1.30.2: Chromium's header/footer costs 3 checks of clause 7.1). Running headers via @page margin boxes, watermarks and footnotes are unaffected — headers and watermarks are declared as artifacts, and a footnote band is a real /Note structure element.");
                     }
                 }
 
@@ -3419,6 +3421,140 @@ public class PlaywrightPdfService : IPdfService
     /// substitution pass runs between the reflow loop and here, and it can nudge the
     /// layout.
     /// </summary>
+
+    /// <summary>
+    /// Adds a real <c>/Note</c> structure element for a footnote band, so a tagged document
+    /// stays PDF/UA conformant WITHOUT lying about what the band is.
+    ///
+    /// The tempting fix was to declare the band an /Artifact like the running header. That
+    /// would have taken veraPDF from 7 failed checks to 0 and made the document worse: an
+    /// artifact is furniture a screen reader skips, and a footnote is the one piece of the
+    /// page a reader most needs read to them. Passing the validator by hiding content from
+    /// assistive technology is the opposite of accessibility.
+    ///
+    /// So the band is marked as CONTENT and joined to the structure tree properly, which
+    /// needs four things kept consistent:
+    ///   1. the drawing wrapped in <c>/Note &lt;&lt;/MCID n&gt;&gt; BDC … EMC</c>, with n
+    ///      unused on that page;
+    ///   2. a <c>/StructElem</c> of subtype /Note pointing at the page and that MCID;
+    ///   3. that element parented into the document's own structure hierarchy;
+    ///   4. the page's ParentTree entry extended so index n resolves back to the element.
+    /// Miss the fourth and the tree LOOKS right in a dump while assistive technology cannot
+    /// walk from the mark to its element — a broken tree is worse than an untagged one,
+    /// because it reads as tagged.
+    /// </summary>
+    /// <returns>The MCID to mark the drawing with, or null when the document has no
+    /// structure tree to join (an untagged render, where none of this applies).</returns>
+    private static int? PrepareFootnoteNote(
+        PdfSharpCore.Pdf.PdfDocument document, PdfSharpCore.Pdf.PdfPage page,
+        int footnoteNumber, ILogger? logger)
+    {
+        try
+        {
+            var structRoot = document.Internals.Catalog.Elements.GetDictionary("/StructTreeRoot");
+            if (structRoot == null) return null;
+
+            // A page's marked content is indexed by MCID, so the new one has to be a number
+            // Chromium did not already use on THIS page.
+            var nextMcid = MaxMcidOnPage(page) + 1;
+
+            var note = new PdfSharpCore.Pdf.PdfDictionary(document);
+            document.Internals.AddObject(note);
+            note.Elements["/Type"] = new PdfSharpCore.Pdf.PdfName("/StructElem");
+            note.Elements["/S"] = new PdfSharpCore.Pdf.PdfName("/Note");
+            note.Elements["/Pg"] = PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(page);
+            note.Elements["/K"] = new PdfSharpCore.Pdf.PdfInteger(nextMcid);
+            // PDF/UA-1 requires a Note to be identifiable; the number is already unique
+            // within the document because footnotes are numbered continuously.
+            note.Elements["/ID"] = new PdfSharpCore.Pdf.PdfString($"footnote-{footnoteNumber}");
+            note.Elements["/Alt"] = new PdfSharpCore.Pdf.PdfString($"Footnote {footnoteNumber}");
+
+            // Parent it under whatever the document's top-level element is, rather than
+            // under the paragraph that owns the call marker: the band is drawn at the foot
+            // of the page and is not inside that paragraph's content.
+            var parent = structRoot.Elements.GetDictionary("/K");
+            if (parent == null) return null;
+            note.Elements["/P"] = PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(parent);
+            var siblings = parent.Elements.GetArray("/K");
+            if (siblings == null)
+            {
+                siblings = new PdfSharpCore.Pdf.PdfArray(document);
+                parent.Elements["/K"] = siblings;
+            }
+            siblings.Elements.Add(PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(note));
+
+            if (!AppendToParentTree(structRoot, page, note, nextMcid))
+            {
+                logger?.LogWarning(
+                    "Footnote {Number}: could not extend the structure ParentTree, so the note is not left half-attached.",
+                    footnoteNumber);
+                siblings.Elements.RemoveAt(siblings.Elements.Count - 1);
+                return null;
+            }
+            return nextMcid;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Could not tag footnote {Number} as a /Note; it will be drawn untagged.", footnoteNumber);
+            return null;
+        }
+    }
+
+    /// <summary>Highest /MCID already used in a page's content streams.</summary>
+    private static int MaxMcidOnPage(PdfSharpCore.Pdf.PdfPage page)
+    {
+        var max = -1;
+        try
+        {
+            foreach (var content in page.Contents)
+            {
+                var bytes = content.Stream?.UnfilteredValue;
+                if (bytes == null || bytes.Length == 0) continue;
+                var text = Encoding.ASCII.GetString(bytes);
+                foreach (Match m in Regex.Matches(text, @"/MCID\s+(\d+)"))
+                {
+                    if (int.TryParse(m.Groups[1].Value, out var value) && value > max) max = value;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // An unreadable stream means we cannot prove a number is free, so start high
+            // enough that a collision is implausible rather than guessing low.
+            return Math.Max(max, 4095);
+        }
+        return max;
+    }
+
+    /// <summary>
+    /// Makes the page's ParentTree entry resolve the new MCID back to its element. The
+    /// entry is an array indexed BY MCID, so the element has to land at exactly that index
+    /// — padding with nulls if Chromium left a gap.
+    /// </summary>
+    private static bool AppendToParentTree(
+        PdfSharpCore.Pdf.PdfDictionary structRoot, PdfSharpCore.Pdf.PdfPage page,
+        PdfSharpCore.Pdf.PdfDictionary note, int mcid)
+    {
+        var parentTree = structRoot.Elements.GetDictionary("/ParentTree");
+        var nums = parentTree?.Elements.GetArray("/Nums");
+        if (nums == null) return false;
+        if (!page.Elements.ContainsKey("/StructParents")) return false;
+        var structParents = page.Elements.GetInteger("/StructParents");
+
+        // /Nums is a flat [key value key value …] list, so the value belonging to this
+        // page's key is the element after it.
+        for (var i = 0; i + 1 < nums.Elements.Count; i += 2)
+        {
+            if (nums.Elements[i] is not PdfSharpCore.Pdf.PdfInteger key || key.Value != structParents)
+                continue;
+            if (nums.Elements.GetArray(i + 1) is not { } entry) return false;
+            while (entry.Elements.Count < mcid) entry.Elements.Add(PdfSharpCore.Pdf.PdfNull.Value);
+            entry.Elements.Add(PdfSharpCore.Pdf.Advanced.PdfInternals.GetReference(note));
+            return true;
+        }
+        return false;
+    }
+
     private static byte[] StampFootnotes(
         byte[] pdfBytes, PaginationPlan plan, RenderingOptions options,
         ILogger? logger = null, List<string>? diagnosticWarnings = null)
@@ -3470,6 +3606,17 @@ public class PlaywrightPdfService : IPdfService
             var pdfPage = document.Pages[group.Key - 1];
             var contentWidth = Math.Max(72.0, pdfPage.Width.Point - marginLeftPt - marginRightPt);
             var items = group.OrderBy(f => f.Number).ToList();
+
+            // A footnote band is CONTENT, so in a tagged document it joins the structure
+            // tree as a /Note rather than being declared furniture. Prepared before the
+            // drawing begins, because the marked-content block has to open first.
+            int? noteMcid = options.GenerateTaggedPdf
+                ? PrepareFootnoteNote(document, pdfPage, items[0].Number, logger)
+                : null;
+            if (noteMcid is { } mcid)
+            {
+                AppendRawContent(pdfPage, $"/Note << /MCID {mcid} >> BDC\n");
+            }
 
             using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(
                 pdfPage, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
@@ -3550,6 +3697,15 @@ public class PlaywrightPdfService : IPdfService
                 }
 
                 y += area.ItemGapPt;
+            }
+
+            if (noteMcid is not null)
+            {
+                // After the XGraphics is disposed: it writes into the stream it appended
+                // at construction, so closing earlier would leave the band outside its own
+                // marked-content block.
+                gfx.Dispose();
+                AppendRawContent(pdfPage, "EMC\n");
             }
         }
 

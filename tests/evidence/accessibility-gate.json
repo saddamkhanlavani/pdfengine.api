@@ -62,16 +62,14 @@
       "clauses": []
     },
     {
-      "case": "tagged + footnote (KNOWN: real content, not yet in the structure tree)",
+      "case": "tagged + footnote",
       "checked": true,
-      "compliant": false,
-      "passed": 1626,
-      "failed": 7,
-      "expected": false,
-      "engine_warned": true,
-      "clauses": [
-        "7.1/3"
-      ]
+      "compliant": true,
+      "passed": 1647,
+      "failed": 0,
+      "expected": true,
+      "engine_warned": false,
+      "clauses": []
     },
     {
       "case": "tagged + Chromium headerTemplate (KNOWN: upstream, untagged)",
