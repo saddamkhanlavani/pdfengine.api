@@ -27,7 +27,7 @@ Usage:
     python3 tests/soak_gate.py --renders 500         # a quick check
     python3 tests/soak_gate.py --concurrency 4
 """
-import argparse, json, pathlib, statistics, subprocess, sys, time
+import argparse, json, os, pathlib, statistics, subprocess, sys, time
 import concurrent.futures as futures
 import urllib.error, urllib.request
 
@@ -124,6 +124,21 @@ def cold_start():
             "first_render_s": round(elapsed, 2)}
 
 
+def host_load():
+    """The host's 1-minute load average.
+
+    Recorded next to every sample because latency measured on a busy machine is not a
+    property of the engine. Twice a soak here reported a large drift that turned out to be
+    the HOST — a fuzzer the first time, macOS daemons and a dev server the second, at load
+    average 17.9 while the container used a fifth of its memory limit. Without this column
+    the number reads as a regression and costs someone a day.
+    """
+    try:
+        return round(os.getloadavg()[0], 2)
+    except (OSError, AttributeError):
+        return None
+
+
 def slope(xs, ys):
     """Least-squares slope; MB per render."""
     n = len(xs)
@@ -170,12 +185,13 @@ def main():
                     errors.append((completed, err))
                 if completed % args.sample_every == 0:
                     mb = rss_mb()
+                    load = host_load()
                     if mb is not None:
-                        samples.append((completed, mb))
+                        samples.append((completed, mb, load))
                     rate = completed / (time.time() - started)
                     print(f"  {completed:6}/{args.renders}  {mb:7.1f} MB  "
-                          f"{elapsed*1000:6.0f}ms  {rate:5.1f}/s  errors={len(errors)}",
-                          flush=True)
+                          f"{elapsed*1000:6.0f}ms  {rate:5.1f}/s  load={load}  "
+                          f"errors={len(errors)}", flush=True)
 
     duration = time.time() - started
     tenth = max(1, len(latencies) // 10)
@@ -201,15 +217,24 @@ def main():
     drift = (last_lat - first_lat) / first_lat if first_lat else 0
     print(f"latency drift  first tenth {first_lat*1000:.0f}ms -> "
           f"last tenth {last_lat*1000:.0f}ms  ({drift:+.1%})")
-    if drift > 0.50:
+    loads = [l for _c, _m, l in samples if l is not None]
+    busy = max(loads) > 8 if loads else False
+    if drift > 0.50 and not busy:
         failures.append(f"latency degraded {drift:.0%} across the run")
+    elif drift > 0.50:
+        # Not a pass and not a failure — a measurement taken on a machine that was busy
+        # doing something else. Reported as UNTRUSTWORTHY so nobody hunts a regression
+        # that actually lives in the host's load average. Twice now.
+        print(f"latency drift NOT ASSESSED: host load reached {max(loads)} during the run, so "
+              f"the {drift:+.0%} drift is not attributable to the engine. Re-run on an idle "
+              f"host or a CI runner.")
 
     leak = None
     if len(samples) >= 10:
         decile = max(1, len(samples) // 10)
-        early = statistics.median(m for _, m in samples[:decile])
-        late = statistics.median(m for _, m in samples[-decile:])
-        per_render = slope([c for c, _ in samples], [m for _, m in samples])
+        early = statistics.median(m for _c, m, _l in samples[:decile])
+        late = statistics.median(m for _c, m, _l in samples[-decile:])
+        per_render = slope([c for c, _m, _l in samples], [m for _c, m, _l in samples])
         growth = (late - early) / early if early else 0
         print(f"memory  first decile {early:.1f} MB -> last decile {late:.1f} MB "
               f"({growth:+.1%}), trend {per_render*1000:+.3f} MB per 1000 renders")
@@ -230,7 +255,8 @@ def main():
                              "max": round(max(latencies) * 1000)},
               "latency_drift_pct": round(drift * 100, 2),
               "cold_start": cold, "memory": leak,
-              "samples": [{"render": c, "mb": round(m, 1)} for c, m in samples]}
+              "host_load": {"max": max((l for _c, _m, l in samples if l is not None), default=None)},
+              "samples": [{"render": c, "mb": round(m, 1), "load": l} for c, m, l in samples]}
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     (EVIDENCE / "soak-gate.json").write_text(json.dumps(record, indent=2) + "\n")
 

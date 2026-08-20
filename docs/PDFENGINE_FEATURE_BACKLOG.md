@@ -175,18 +175,36 @@ succeeds while Redis/Postgres are down" was wishful: authenticating an API key n
 database and charging a quota needs Redis. The gate now asserts what the engine actually
 owes — a retryable answer, never a 500 — and says so in its docstring.
 
-### T3-5 soak — measured, one number still to confirm
+### T3-5 soak — re-run clean, drift question answered
 
-10,000 renders at concurrency 2, **0 errors**. Cold start: health at 2.3s, first PDF served
-at 4.4s (the browser launch is 2.1s of that — an autoscaler's grace period must exceed it).
-Latency median 270ms, p95 727ms, p99 1072ms. Memory +11.9% first decile to last, trend
-+7.0 MB per 1000 renders — under the gate's threshold but a real upward slope worth watching
-over a longer run.
+10,000 renders, concurrency 2, **0 errors**. Cold start: health at 2.3s, first PDF at 4.4s
+(2.1s of that is the browser launch — an autoscaler's grace period must exceed it).
 
-Latency drift measured +70% (202ms to 345ms), which **failed the gate and is not yet a
-trustworthy number**: the fuzzer and several `dotnet build` runs were competing for the same
-machine during the back half. A clean re-run with nothing else on the host is required
-before treating it as a regression.
+**The +70% latency drift was the host, not the engine.** Re-measured with the fuzzer and
+the build loop off the machine: **+3.4%** (224ms first tenth to 231ms last tenth). Median
+243ms, p95 692ms, p99 1377ms.
+
+`max` for the run reads 1,073,711 ms — **17.9 minutes for one render**. That is also the
+host: macOS hit load average 17.9 with heavy pageouts partway through and throughput fell
+from 7.8/s to 0.7/s before recovering. The container was using 738 MB of a 3.8 GB limit
+throughout. The gate now records the host's load average beside every sample and refuses to
+report drift as a verdict when load exceeded 8 — twice a soak here has produced a number
+that looked like a regression and lived in the load average.
+
+**Open, and the reason this is not a clean pass: memory trends upward in both runs.**
+
+| Run | Growth, first decile to last | Trend |
+|---|---|---|
+| First (confounded) | +11.9% | +7.0 MB per 1000 renders |
+| Second (clean) | +19.8% | +11.6 MB per 1000 renders |
+
+Both are under the gate's 25% threshold, so it PASSES, and both are positive. Absolute
+range across the clean run was 585 MB to 1015 MB, sawtoothing with the 50-render browser
+recycle, but the floor rises. At +11.6 MB per 1000 renders a worker accumulates roughly
+1 GB per 100,000 renders, which a container with a 3.8 GB limit reaches in a few days of
+real traffic. **This needs a heap profile before high-volume production**, and the
+threshold should probably tighten once the cause is known. Not a blocker for launch at
+modest volume; definitely a thing to know about before a large customer.
 
 ### T3-1 — what was fixed, and PAC
 
