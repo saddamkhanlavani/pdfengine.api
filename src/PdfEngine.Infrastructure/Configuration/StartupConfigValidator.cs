@@ -74,6 +74,7 @@ public static class StartupConfigValidator
         // must never start outside Development.
         "***PURGED-ROTATED-SECRET***",
         "dev-only-Hgv5tVhqJXFgSKgxV0A4m7X9NCwBvvldOsif8n1x",
+        "dev-only-rotated-qQWDZkjd0DBXQq6XYSWeVzYhsxmafiE7",
         "sk_test_your_key",
         "minioadmin",
         "pdfpassword",
